@@ -252,3 +252,51 @@ func TestRenderSplitByAccessLevel(t *testing.T) {
 		t.Errorf("Expected S3List and S3Write Sids, got:\n%s", out)
 	}
 }
+
+func TestRenderSSO(t *testing.T) {
+	items := sampleActionItems()
+	opts := RenderOptions{
+		Format:          FormatSSO,
+		SessionDuration: "PT8H",
+	}
+
+	out, err := Render(items, opts)
+	if err != nil {
+		t.Fatalf("Render SSO failed: %v", err)
+	}
+
+	if !strings.Contains(out, "aws_ssoadmin_permission_set") {
+		t.Errorf("Expected aws_ssoadmin_permission_set resource in output:\n%s", out)
+	}
+	if !strings.Contains(out, "aws_ssoadmin_permission_set_inline_policy") {
+		t.Errorf("Expected aws_ssoadmin_permission_set_inline_policy in output:\n%s", out)
+	}
+	if !strings.Contains(out, `session_duration = "PT8H"`) {
+		t.Errorf("Expected session_duration = PT8H in output:\n%s", out)
+	}
+}
+
+func TestRenderAnnotate(t *testing.T) {
+	items := []ActionItem{
+		{
+			Action:       "s3:GetObject",
+			Service:      "s3",
+			AccessLevel:  "Read",
+			ResourceARNs: []string{"*"},
+			FallbackNote: "called by auth_test.go:42",
+		},
+	}
+	opts := RenderOptions{
+		Format:   FormatTF,
+		Annotate: true,
+	}
+
+	out, err := Render(items, opts)
+	if err != nil {
+		t.Fatalf("Render annotate failed: %v", err)
+	}
+
+	if !strings.Contains(out, "called by auth_test.go:42") {
+		t.Errorf("Expected annotation comment in output:\n%s", out)
+	}
+}

@@ -19,6 +19,7 @@ import (
 	"github.com/smford/iam-shrink/internal/compliance"
 	"github.com/smford/iam-shrink/internal/csm"
 	"github.com/smford/iam-shrink/internal/diff"
+	"github.com/smford/iam-shrink/internal/impact"
 	"github.com/smford/iam-shrink/internal/k8s"
 	"github.com/smford/iam-shrink/internal/linter"
 	"github.com/smford/iam-shrink/internal/mapper"
@@ -47,6 +48,7 @@ Usage:
   iam-shrink prune-role <role-policy.json> [flags]
   iam-shrink verify <base-policy.json> <shrunk-policy.json>
   iam-shrink optimize [flags] <policy.json>
+  iam-shrink impact [flags] <cloudtrail-file-or-dir> <policy.json>
   iam-shrink report [flags] <policy.json>
   iam-shrink update-rules [flags]
   iam-shrink state <terraform.tfstate> [policy.json]
@@ -69,6 +71,7 @@ Commands:
   prune-role       Prune unaccessed permissions from an existing IAM role policy
   verify           Verify mathematically that a shrunk policy is a strict subset of base
   optimize         Compress policy size and optimize statements to fit under AWS IAM limits
+  impact           Analyze historical CloudTrail logs to compute operational risk & severed calls
   report           Audit an IAM policy against CIS AWS Foundations or NIST SP 800-53 benchmarks
   update-rules     Download updated CIS & NIST rule schemas to ~/.iam-shrink/rules/
   state            Resolve parameterized ARN variables using Terraform/OpenTofu tfstate
@@ -85,7 +88,7 @@ Commands:
   version          Show version information
 
 Flags for 'run':
-  --format string           Output format: json, tf, cdk, cdktf, pulumi, cfn, gcp, azure, k8s-rbac, vault (default "json")
+  --format string           Output format: json, tf, cdk, cdktf, pulumi, cfn, sso, gcp, azure, k8s-rbac, vault (default "json")
   --policy-type string      Policy type: identity, boundary, scp, resource (default "identity")
   --out string              Output file path (default: stdout)
   --patch-file string       Path to Terraform .tf file to patch in-place
@@ -167,6 +170,8 @@ func main() {
 		handleVerify(os.Args[2:])
 	case "optimize":
 		handleOptimize(os.Args[2:])
+	case "impact":
+		handleImpact(os.Args[2:])
 	case "ui":
 		handleUI(os.Args[2:])
 	case "report":
@@ -231,6 +236,7 @@ func handleRun(args []string) {
 		diffAgainst          string
 		mappingsPath         string
 		optimizeSize         bool
+		annotate             bool
 	)
 
 	fs.StringVar(&formatStr, "format", "json", "Output format: json, tf, cdk, cdktf, pulumi, cfn")
@@ -253,6 +259,7 @@ func handleRun(args []string) {
 	fs.StringVar(&diffAgainst, "diff-against", "", "Path to existing policy JSON to compare against")
 	fs.StringVar(&mappingsPath, "mappings", "", "Path to custom YAML mappings override file")
 	fs.BoolVar(&optimizeSize, "optimize-size", false, "Minify and compress JSON policy to minimize byte quota")
+	fs.BoolVar(&annotate, "annotate", false, "Annotate policy statements with runtime call provenance and access levels")
 
 	var flagArgs []string
 	var cmdArgs []string
@@ -316,6 +323,7 @@ func handleRun(args []string) {
 		LintPolicy:           lintPolicy,
 		CustomMappings:       mappingsPath,
 		OptimizeSize:         optimizeSize,
+		Annotate:             annotate,
 		Stdout:               os.Stdout,
 		Stderr:               os.Stderr,
 	}
@@ -1261,6 +1269,56 @@ func handleOptimize(args []string) {
 		fmt.Fprintf(os.Stderr, "Optimized policy written to %s (%d bytes, saved %.1f%%)\n", *outFile, res.OptimizedBytes, res.SavedPct)
 	} else {
 		fmt.Println(res.OptimizedJSON)
+	}
+}
+
+func handleImpact(args []string) {
+	fs := flag.NewFlagSet("impact", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	jsonOut := fs.Bool("json", false, "Output impact analysis as JSON")
+	minScore := fs.Float64("min-score", 95.0, "Minimum acceptable operational safety score (0-100)")
+	failOnSevered := fs.Bool("fail-on-severed", false, "Exit with code 1 if any historical call is severed")
+
+	posArgs, err := parseFlagsAndPosArgs(fs, args)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error parsing flags: %v\n", err)
+		os.Exit(1)
+	}
+
+	if len(posArgs) < 2 {
+		fmt.Fprintln(os.Stderr, "Usage: iam-shrink impact [flags] <cloudtrail-file-or-dir> <policy.json>")
+		fmt.Fprintln(os.Stderr, "\nEvaluates historical CloudTrail calls against a proposed shrunk policy to")
+		fmt.Fprintln(os.Stderr, "measure operational safety and surface rare operations that would be broken.")
+		os.Exit(1)
+	}
+
+	cloudtrailPath := posArgs[0]
+	policyPath := posArgs[1]
+
+	policyBytes, err := readPolicyInput(policyPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error reading policy %q: %v\n", policyPath, err)
+		os.Exit(1)
+	}
+
+	report, err := impact.AnalyzePath(cloudtrailPath, policyBytes)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error analyzing impact: %v\n", err)
+		os.Exit(1)
+	}
+
+	if *jsonOut {
+		out, _ := report.FormatJSON()
+		fmt.Println(out)
+	} else {
+		fmt.Print(report.FormatTerminal())
+	}
+
+	if *failOnSevered && report.SeveredCalls > 0 {
+		os.Exit(1)
+	}
+	if report.SafetyScore < *minScore {
+		os.Exit(1)
 	}
 }
 

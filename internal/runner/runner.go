@@ -49,6 +49,7 @@ type Options struct {
 	LintPolicy           bool
 	CustomMappings       string // Path to optional YAML overrides
 	OptimizeSize         bool   // Compress and minify output policy JSON
+	Annotate             bool   // Annotate policy statements with runtime call provenance
 	Stdout               io.Writer
 	Stderr               io.Writer
 }
@@ -229,6 +230,7 @@ func Run(ctx context.Context, opts Options) (*Result, error) {
 		SynthesizeConditions: opts.SynthesizeConditions,
 		SynthesizeNotAction:  opts.SynthesizeNotAction,
 		PrincipalARN:         opts.PrincipalARN,
+		Annotate:             opts.Annotate,
 	}
 
 	var renderedPolicy string
