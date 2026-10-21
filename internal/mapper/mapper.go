@@ -26,6 +26,7 @@ type MappingEntry struct {
 	Actions          []string `yaml:"actions" json:"actions"`
 	ResourceARNs     []string `yaml:"resource_arns,omitempty" json:"resource_arns,omitempty"`
 	DependentActions []string `yaml:"dependent_actions,omitempty" json:"dependent_actions,omitempty"`
+	AccessLevel      string   `yaml:"access_level,omitempty" json:"access_level,omitempty"`
 	Comment          string   `yaml:"comment,omitempty" json:"comment,omitempty"`
 }
 
@@ -37,6 +38,7 @@ type ResolvedMapping struct {
 	Actions          []string
 	ResourceARNs     []string
 	DependentActions []string
+	AccessLevel      string
 	IsFallback       bool
 }
 
@@ -108,6 +110,30 @@ func makeKey(service, api string) string {
 	return svc + ":" + a
 }
 
+// ClassifyAccessLevel categorizes an IAM action into Read, Write, List, Tagging, or Permissions.
+func ClassifyAccessLevel(action string) string {
+	parts := strings.SplitN(action, ":", 2)
+	name := action
+	if len(parts) == 2 {
+		name = parts[1]
+	}
+	lower := strings.ToLower(name)
+
+	if strings.Contains(lower, "tag") {
+		return "Tagging"
+	}
+	if strings.Contains(lower, "policy") || strings.Contains(lower, "passrole") || strings.Contains(lower, "grant") || strings.Contains(lower, "permission") {
+		return "Permissions"
+	}
+	if strings.HasPrefix(lower, "list") {
+		return "List"
+	}
+	if strings.HasPrefix(lower, "get") || strings.HasPrefix(lower, "describe") || strings.HasPrefix(lower, "head") || strings.HasPrefix(lower, "batchget") || strings.HasPrefix(lower, "filter") {
+		return "Read"
+	}
+	return "Write"
+}
+
 // Resolve looks up a (Service, Api) pair. If unmapped, it falls back to <servicePrefix>:<Api>.
 func (m *Mapper) Resolve(service, api string) ResolvedMapping {
 	svcPrefix := NormalizeServicePrefix(service)
@@ -132,6 +158,11 @@ func (m *Mapper) Resolve(service, api string) ResolvedMapping {
 			sort.Strings(depActions)
 		}
 
+		accessLevel := entry.AccessLevel
+		if accessLevel == "" && len(actions) > 0 {
+			accessLevel = ClassifyAccessLevel(actions[0])
+		}
+
 		return ResolvedMapping{
 			Service:          entry.Service,
 			Api:              entry.Api,
@@ -139,6 +170,7 @@ func (m *Mapper) Resolve(service, api string) ResolvedMapping {
 			Actions:          actions,
 			ResourceARNs:     rARNs,
 			DependentActions: depActions,
+			AccessLevel:      accessLevel,
 			IsFallback:       false,
 		}
 	}
@@ -152,6 +184,7 @@ func (m *Mapper) Resolve(service, api string) ResolvedMapping {
 		Actions:          []string{fallbackAction},
 		ResourceARNs:     []string{"*"},
 		DependentActions: nil,
+		AccessLevel:      ClassifyAccessLevel(fallbackAction),
 		IsFallback:       true,
 	}
 }

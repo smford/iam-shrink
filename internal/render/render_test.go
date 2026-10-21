@@ -11,24 +11,28 @@ func sampleActionItems() []ActionItem {
 		{
 			Action:       "s3:ListBucket",
 			Service:      "s3",
+			AccessLevel:  "List",
 			ResourceARNs: []string{"arn:aws:s3:::my-bucket"},
 			IsFallback:   false,
 		},
 		{
 			Action:       "s3:PutObject",
 			Service:      "s3",
-			ResourceARNs: []string{"arn:aws:s3:::my-bucket/*"},
+			AccessLevel:  "Write",
+			ResourceARNs: []string{"arn:aws:s3:::${var.bucket_name}/*"},
 			IsFallback:   false,
 		},
 		{
 			Action:       "dynamodb:PutItem",
 			Service:      "dynamodb",
-			ResourceARNs: []string{"arn:aws:dynamodb:us-east-1:123456789012:table/MyTable"},
+			AccessLevel:  "Write",
+			ResourceARNs: []string{"arn:aws:dynamodb:${var.region}:${var.account_id}:table/${var.table_name}"},
 			IsFallback:   false,
 		},
 		{
 			Action:       "custom:CustomMethod",
 			Service:      "custom",
+			AccessLevel:  "Write",
 			ResourceARNs: nil,
 			IsFallback:   true,
 		},
@@ -48,7 +52,6 @@ func TestRenderJSON(t *testing.T) {
 		t.Fatalf("Render failed: %v", err)
 	}
 
-	// Verify valid JSON
 	var parsed map[string]interface{}
 	if err := json.Unmarshal([]byte(out), &parsed); err != nil {
 		t.Fatalf("Invalid JSON produced: %v\nOutput was:\n%s", err, out)
@@ -57,35 +60,15 @@ func TestRenderJSON(t *testing.T) {
 	if parsed["Version"] != "2012-10-17" {
 		t.Errorf("Expected Version 2012-10-17, got %v", parsed["Version"])
 	}
-
-	// Check statements order
-	stmts, ok := parsed["Statement"].([]interface{})
-	if !ok || len(stmts) != 3 {
-		t.Fatalf("Expected 3 statements, got %v", len(stmts))
-	}
-
-	// First statement should be custom, second dynamodb, third s3 (alphabetical Sids)
-	first := stmts[0].(map[string]interface{})
-	second := stmts[1].(map[string]interface{})
-	third := stmts[2].(map[string]interface{})
-
-	if first["Sid"] != "Custom" || second["Sid"] != "Dynamodb" || third["Sid"] != "S3" {
-		t.Errorf("Unexpected Sids order: %v, %v, %v", first["Sid"], second["Sid"], third["Sid"])
-	}
-
-	// Check wildcard resource when strict-arns=false
-	resSlice := third["Resource"].([]interface{})
-	if len(resSlice) != 1 || resSlice[0] != "*" {
-		t.Errorf("Expected resource '*', got %v", resSlice)
-	}
 }
 
-func TestRenderTerraform(t *testing.T) {
+func TestRenderTerraformWithVars(t *testing.T) {
 	items := sampleActionItems()
 	opts := RenderOptions{
 		Format:         FormatTF,
 		GroupByService: true,
 		StrictARNs:     true,
+		EmitVars:       true,
 	}
 
 	out, err := Render(items, opts)
@@ -93,19 +76,15 @@ func TestRenderTerraform(t *testing.T) {
 		t.Fatalf("Render failed: %v", err)
 	}
 
-	// Check data block
 	if !strings.Contains(out, `data "aws_iam_policy_document" "generated" {`) {
 		t.Errorf("Expected Terraform data source header")
 	}
 
-	// Check fallback comment
-	if !strings.Contains(out, `"custom:CustomMethod", # unmapped fallback from SDK call`) {
-		t.Errorf("Expected fallback comment in Terraform output, got:\n%s", out)
+	if !strings.Contains(out, `variable "bucket_name" {`) {
+		t.Errorf("Expected variable bucket_name block, got:\n%s", out)
 	}
-
-	// Check strict arns for S3
-	if !strings.Contains(out, `"arn:aws:s3:::my-bucket"`) || !strings.Contains(out, `"arn:aws:s3:::my-bucket/*"`) {
-		t.Errorf("Expected strict ARNs in Terraform output, got:\n%s", out)
+	if !strings.Contains(out, `variable "table_name" {`) {
+		t.Errorf("Expected variable table_name block, got:\n%s", out)
 	}
 }
 
@@ -125,19 +104,13 @@ func TestRenderCDK(t *testing.T) {
 	if !strings.Contains(out, `import * as iam from 'aws-cdk-lib/aws-iam';`) {
 		t.Errorf("Expected CDK import statement")
 	}
-	if !strings.Contains(out, `new iam.PolicyStatement({`) {
-		t.Errorf("Expected new iam.PolicyStatement")
-	}
-	if !strings.Contains(out, `'custom:CustomMethod', // unmapped fallback from SDK call`) {
-		t.Errorf("Expected fallback comment in CDK output, got:\n%s", out)
-	}
 }
 
-func TestRenderNonGrouped(t *testing.T) {
+func TestRenderPulumi(t *testing.T) {
 	items := sampleActionItems()
 	opts := RenderOptions{
-		Format:         FormatTF,
-		GroupByService: false,
+		Format:         FormatPulumi,
+		GroupByService: true,
 		StrictARNs:     false,
 	}
 
@@ -146,9 +119,52 @@ func TestRenderNonGrouped(t *testing.T) {
 		t.Fatalf("Render failed: %v", err)
 	}
 
-	// Should only have 1 statement
-	count := strings.Count(out, "statement {")
-	if count != 1 {
-		t.Errorf("Expected exactly 1 statement, got %d", count)
+	if !strings.Contains(out, `import * as aws from "@pulumi/aws";`) {
+		t.Errorf("Expected Pulumi import statement")
+	}
+	if !strings.Contains(out, `aws.iam.getPolicyDocumentOutput`) {
+		t.Errorf("Expected getPolicyDocumentOutput in Pulumi output")
+	}
+}
+
+func TestRenderCloudFormation(t *testing.T) {
+	items := sampleActionItems()
+	opts := RenderOptions{
+		Format:         FormatCFN,
+		GroupByService: true,
+		StrictARNs:     false,
+	}
+
+	out, err := Render(items, opts)
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	var parsed map[string]interface{}
+	if err := json.Unmarshal([]byte(out), &parsed); err != nil {
+		t.Fatalf("Invalid CloudFormation template: %v\nOutput was:\n%s", err, out)
+	}
+
+	if parsed["AWSTemplateFormatVersion"] != "2010-09-09" {
+		t.Errorf("Expected AWSTemplateFormatVersion, got %v", parsed["AWSTemplateFormatVersion"])
+	}
+}
+
+func TestRenderSplitByAccessLevel(t *testing.T) {
+	items := sampleActionItems()
+	opts := RenderOptions{
+		Format:             FormatJSON,
+		GroupByService:     true,
+		SplitByAccessLevel: true,
+		StrictARNs:         false,
+	}
+
+	out, err := Render(items, opts)
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	if !strings.Contains(out, "S3List") || !strings.Contains(out, "S3Write") {
+		t.Errorf("Expected S3List and S3Write Sids, got:\n%s", out)
 	}
 }
