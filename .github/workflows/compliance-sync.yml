@@ -24,10 +24,10 @@ jobs:
           go-version: '1.23'
           cache: true
 
-      - name: Run Rule Verification
+      - name: Generate and Sync Compliance Rules
         run: |
+          go run ./cmd/sync-compliance --out-dir=internal/compliance/embedded
           go test -v ./internal/compliance/...
-          ./bin/iam-shrink version || true
 
       - name: Check for Compliance Changes
         id: git_status
@@ -35,11 +35,11 @@ jobs:
           git status --porcelain
           echo "has_changes=$(if [ -n "$(git status --porcelain)" ]; then echo "true"; else echo "false"; fi)" >> $GITHUB_OUTPUT
 
-      - name: Create Pull Request
+      - name: Commit and Push Updated Benchmark Rules to Main
         if: steps.git_status.outputs.has_changes == 'true'
-        uses: peter-evans/create-pull-request@v6
-        with:
-          title: "chore(compliance): automated sync of CIS v3 and NIST 800-53 standards"
-          commit-message: "chore(compliance): sync latest CIS & NIST rules"
-          branch: "automated/compliance-sync"
-          body: "Automated weekly sync verifying compliance definitions and baseline rule benchmarks."
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add internal/compliance/embedded/
+          git commit -m "chore(compliance): automated sync of CIS v3 and NIST 800-53 standards"
+          git push origin main

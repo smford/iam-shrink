@@ -1,42 +1,39 @@
 name: NIST SP 800-53
-version: "Rev 5"
+version: Rev 5
 description: Security and Privacy Controls for Information Systems and Organizations
 rules:
-  - id: NIST-AC-6-LEAST-PRIVILEGE-ADMIN
-    control_id: "AC-6"
-    title: Least Privilege - Prevent Uncontrolled Administrative Privileges
-    severity: CRITICAL
-    deny_actions:
-      - "*"
-    remediation: Implement least privilege by strictly removing wildcard actions.
-
-  - id: NIST-AC-6-LEAST-PRIVILEGE-RESOURCES
-    control_id: "AC-6"
-    title: Least Privilege - Scope Resource Boundaries for Sensitive APIs
-    severity: HIGH
-    deny_wildcard_resources_on_actions:
-      - "iam:passrole"
-      - "iam:createpolicyversion"
-      - "iam:attachrolepolicy"
-      - "iam:putrolepolicy"
-      - "sts:assumerole"
-    remediation: Define explicit resource ARNs for delegation and policy attachment actions.
-
-  - id: NIST-AC-3-ACCESS-ENFORCEMENT
-    control_id: "AC-3"
-    title: Access Enforcement - Avoid Unbounded Service Grants
-    severity: MEDIUM
-    deny_actions:
-      - "s3:*"
-      - "dynamodb:*"
-      - "kms:*"
-      - "iam:*"
-    remediation: Restrict permissions to verified operational calls.
-
-  - id: NIST-SC-12-CRYPTOGRAPHIC-PROTECTION
-    control_id: "SC-12"
-    title: Cryptographic Key Management - Constrain KMS Decrypt/Encrypt Keys
-    severity: HIGH
-    deny_wildcard_resources_on_actions:
-      - "kms:decrypt"
-    remediation: Restrict kms:Decrypt to designated key ARNs instead of '*'.
+    - id: NIST-AC-6-LEAST-PRIVILEGE-ADMIN
+      control_id: AC-6
+      title: Least Privilege - Prevent Uncontrolled Administrative Privileges
+      severity: CRITICAL
+      deny_actions:
+        - '*'
+      remediation: Implement least privilege by strictly removing wildcard actions.
+    - id: NIST-AC-6-LEAST-PRIVILEGE-RESOURCES
+      control_id: AC-6
+      title: Least Privilege - Scope Resource Boundaries for Sensitive APIs
+      severity: HIGH
+      deny_wildcard_resources_on_actions:
+        - iam:passrole
+        - iam:createpolicyversion
+        - iam:attachrolepolicy
+        - iam:putrolepolicy
+        - sts:assumerole
+      remediation: Define explicit resource ARNs for delegation and policy attachment actions.
+    - id: NIST-AC-3-ACCESS-ENFORCEMENT
+      control_id: AC-3
+      title: Access Enforcement - Avoid Unbounded Service Grants
+      severity: MEDIUM
+      deny_actions:
+        - s3:*
+        - dynamodb:*
+        - kms:*
+        - iam:*
+      remediation: Restrict permissions to verified operational calls.
+    - id: NIST-SC-12-CRYPTOGRAPHIC-PROTECTION
+      control_id: SC-12
+      title: Cryptographic Key Management - Constrain KMS Decrypt/Encrypt Keys
+      severity: HIGH
+      deny_wildcard_resources_on_actions:
+        - kms:decrypt
+      remediation: Restrict kms:Decrypt to designated key ARNs instead of '*'.
