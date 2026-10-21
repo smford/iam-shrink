@@ -199,6 +199,41 @@ func TestRenderCloudFormation(t *testing.T) {
 	}
 }
 
+func TestRenderCDKTF(t *testing.T) {
+	items := sampleActionItems()
+	opts := RenderOptions{
+		Format:         FormatCDKTF,
+		GroupByService: true,
+		StrictARNs:     false,
+	}
+
+	out, err := Render(items, opts)
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	if !strings.Contains(out, "DataAwsIamPolicyDocument") {
+		t.Errorf("Expected CDKTF DataAwsIamPolicyDocument in output:\n%s", out)
+	}
+}
+
+func TestRenderNotActionInversion(t *testing.T) {
+	items := sampleActionItems()
+	opts := RenderOptions{
+		Format:              FormatJSON,
+		SynthesizeNotAction: true,
+	}
+
+	out, err := Render(items, opts)
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	if !strings.Contains(out, `"Effect": "Deny"`) || !strings.Contains(out, `"NotAction"`) {
+		t.Errorf("Expected Effect: Deny and NotAction in output:\n%s", out)
+	}
+}
+
 func TestRenderSplitByAccessLevel(t *testing.T) {
 	items := sampleActionItems()
 	opts := RenderOptions{

@@ -16,6 +16,7 @@ const (
 	FormatJSON   FormatType = "json"
 	FormatTF     FormatType = "tf"
 	FormatCDK    FormatType = "cdk"
+	FormatCDKTF  FormatType = "cdktf"
 	FormatPulumi FormatType = "pulumi"
 	FormatCFN    FormatType = "cfn"
 )
@@ -33,10 +34,12 @@ type ActionItem struct {
 // Statement represents an aggregated IAM policy statement.
 type Statement struct {
 	Sid          string
+	Effect       string
 	Service      string
 	AccessLevel  string
 	Principal    string
 	Actions      []ActionItem
+	NotActions   []string
 	ResourceARNs []string
 	Conditions   map[string]map[string][]string
 }
@@ -60,6 +63,7 @@ type RenderOptions struct {
 	StrictARNs           bool
 	EmitVars             bool
 	SynthesizeConditions bool
+	SynthesizeNotAction  bool
 	PrincipalARN         string
 }
 
@@ -194,13 +198,23 @@ func BuildStatements(items []ActionItem, opts RenderOptions) []Statement {
 				},
 			}
 		}
+		if opts.SynthesizeNotAction {
+			stmt.Effect = "Deny"
+			for _, act := range stmt.Actions {
+				stmt.NotActions = append(stmt.NotActions, act.Action)
+			}
+			stmt.Actions = nil
+			stmt.ResourceARNs = []string{"*"}
+		} else {
+			stmt.Effect = "Allow"
+		}
 		finalStatements = append(finalStatements, stmt)
 	}
 
 	return finalStatements
 }
 
-// Render formats statements into the requested format (json, tf, cdk, pulumi, cfn).
+// Render formats statements into the requested format (json, tf, cdk, cdktf, pulumi, cfn).
 func Render(items []ActionItem, opts RenderOptions) (string, error) {
 	statements := BuildStatements(items, opts)
 	switch opts.Format {
@@ -208,6 +222,8 @@ func Render(items []ActionItem, opts RenderOptions) (string, error) {
 		return RenderTerraform(statements, opts.EmitVars), nil
 	case FormatCDK:
 		return RenderCDK(statements), nil
+	case FormatCDKTF:
+		return RenderCDKTF(statements), nil
 	case FormatPulumi:
 		return RenderPulumi(statements), nil
 	case FormatCFN:
@@ -215,7 +231,7 @@ func Render(items []ActionItem, opts RenderOptions) (string, error) {
 	case FormatJSON, "":
 		return RenderJSON(statements)
 	default:
-		return "", fmt.Errorf("unsupported format %q (allowed: json, tf, cdk, pulumi, cfn)", opts.Format)
+		return "", fmt.Errorf("unsupported format %q (allowed: json, tf, cdk, cdktf, pulumi, cfn)", opts.Format)
 	}
 }
 
@@ -229,7 +245,8 @@ func RenderJSON(statements []Statement) (string, error) {
 		Sid       string                         `json:"Sid,omitempty"`
 		Effect    string                         `json:"Effect"`
 		Principal *jsonPrincipal                 `json:"Principal,omitempty"`
-		Action    []string                       `json:"Action"`
+		Action    []string                       `json:"Action,omitempty"`
+		NotAction []string                       `json:"NotAction,omitempty"`
 		Resource  []string                       `json:"Resource"`
 		Condition map[string]map[string][]string `json:"Condition,omitempty"`
 	}
@@ -249,16 +266,28 @@ func RenderJSON(statements []Statement) (string, error) {
 		}
 		sort.Strings(actionNames)
 
+		var notActions []string
+		if len(stmt.NotActions) > 0 {
+			notActions = append([]string(nil), stmt.NotActions...)
+			sort.Strings(notActions)
+		}
+
 		var principal *jsonPrincipal
 		if stmt.Principal != "" {
 			principal = &jsonPrincipal{AWS: stmt.Principal}
 		}
 
+		eff := stmt.Effect
+		if eff == "" {
+			eff = "Allow"
+		}
+
 		policy.Statement = append(policy.Statement, jsonStatement{
 			Sid:       stmt.Sid,
-			Effect:    "Allow",
+			Effect:    eff,
 			Principal: principal,
 			Action:    actionNames,
+			NotAction: notActions,
 			Resource:  stmt.ResourceARNs,
 			Condition: stmt.Conditions,
 		})
@@ -282,9 +311,14 @@ func RenderTerraform(statements []Statement, emitVars bool) string {
 		if i > 0 {
 			buf.WriteString("\n")
 		}
+		eff := stmt.Effect
+		if eff == "" {
+			eff = "Allow"
+		}
+
 		buf.WriteString("  statement {\n")
 		buf.WriteString(fmt.Sprintf("    sid    = %q\n", stmt.Sid))
-		buf.WriteString("    effect = \"Allow\"\n")
+		buf.WriteString(fmt.Sprintf("    effect = %q\n", eff))
 
 		if stmt.Principal != "" {
 			buf.WriteString("    principals {\n")
@@ -293,16 +327,24 @@ func RenderTerraform(statements []Statement, emitVars bool) string {
 			buf.WriteString("    }\n")
 		}
 
-		// actions
-		buf.WriteString("    actions = [\n")
-		for _, act := range stmt.Actions {
-			if act.IsFallback {
-				buf.WriteString(fmt.Sprintf("      %q, # unmapped fallback from SDK call\n", act.Action))
-			} else {
-				buf.WriteString(fmt.Sprintf("      %q,\n", act.Action))
+		// actions or not_actions
+		if len(stmt.NotActions) > 0 {
+			buf.WriteString("    not_actions = [\n")
+			for _, na := range stmt.NotActions {
+				buf.WriteString(fmt.Sprintf("      %q,\n", na))
 			}
+			buf.WriteString("    ]\n")
+		} else {
+			buf.WriteString("    actions = [\n")
+			for _, act := range stmt.Actions {
+				if act.IsFallback {
+					buf.WriteString(fmt.Sprintf("      %q, # unmapped fallback from SDK call\n", act.Action))
+				} else {
+					buf.WriteString(fmt.Sprintf("      %q,\n", act.Action))
+				}
+			}
+			buf.WriteString("    ]\n")
 		}
-		buf.WriteString("    ]\n")
 
 		// resources
 		buf.WriteString("    resources = [\n")
@@ -476,7 +518,55 @@ func RenderCloudFormation(statements []Statement) string {
 	return string(data) + "\n"
 }
 
-// RenderCDK formats statements as TypeScript AWS CDK iam.PolicyStatement constructs.
+// RenderCDKTF formats statements as TypeScript CDKTF DataAwsIamPolicyDocument.
+func RenderCDKTF(statements []Statement) string {
+	var buf bytes.Buffer
+	buf.WriteString("import { DataAwsIamPolicyDocument } from \"@cdktf/provider-aws/lib/data-aws-iam-policy-document\";\n")
+	buf.WriteString("import { Construct } from \"constructs\";\n\n")
+	buf.WriteString("export function createGeneratedPolicy(scope: Construct, id: string): DataAwsIamPolicyDocument {\n")
+	buf.WriteString("  return new DataAwsIamPolicyDocument(scope, id, {\n")
+	buf.WriteString("    statement: [\n")
+
+	for _, stmt := range statements {
+		eff := stmt.Effect
+		if eff == "" {
+			eff = "Allow"
+		}
+		buf.WriteString("      {\n")
+		buf.WriteString(fmt.Sprintf("        sid: %q,\n", stmt.Sid))
+		buf.WriteString(fmt.Sprintf("        effect: %q,\n", eff))
+
+		if len(stmt.NotActions) > 0 {
+			buf.WriteString("        notActions: [\n")
+			for _, na := range stmt.NotActions {
+				buf.WriteString(fmt.Sprintf("          %q,\n", na))
+			}
+			buf.WriteString("        ],\n")
+		} else {
+			buf.WriteString("        actions: [\n")
+			for _, act := range stmt.Actions {
+				if act.IsFallback {
+					buf.WriteString(fmt.Sprintf("          %q, // unmapped fallback\n", act.Action))
+				} else {
+					buf.WriteString(fmt.Sprintf("          %q,\n", act.Action))
+				}
+			}
+			buf.WriteString("        ],\n")
+		}
+
+		buf.WriteString("        resources: [\n")
+		for _, r := range stmt.ResourceARNs {
+			buf.WriteString(fmt.Sprintf("          %q,\n", r))
+		}
+		buf.WriteString("        ],\n")
+		buf.WriteString("      },\n")
+	}
+
+	buf.WriteString("    ],\n")
+	buf.WriteString("  });\n")
+	buf.WriteString("}\n")
+	return buf.String()
+}
 func RenderCDK(statements []Statement) string {
 	var buf bytes.Buffer
 	buf.WriteString("import * as iam from 'aws-cdk-lib/aws-iam';\n\n")
