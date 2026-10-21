@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
@@ -21,16 +22,19 @@ import (
 	"github.com/smford/iam-shrink/internal/k8s"
 	"github.com/smford/iam-shrink/internal/linter"
 	"github.com/smford/iam-shrink/internal/mapper"
+	"github.com/smford/iam-shrink/internal/optimizer"
 	"github.com/smford/iam-shrink/internal/proxy"
 	"github.com/smford/iam-shrink/internal/render"
 	"github.com/smford/iam-shrink/internal/runner"
 	"github.com/smford/iam-shrink/internal/session"
 	"github.com/smford/iam-shrink/internal/state"
+	"github.com/smford/iam-shrink/internal/verifier"
 	"github.com/smford/iam-shrink/internal/vscode"
+	"github.com/smford/iam-shrink/internal/webui"
 )
 
 var (
-	version = "0.4.0"
+	version = "0.5.0"
 )
 
 func printUsage() {
@@ -41,11 +45,14 @@ Usage:
   iam-shrink ingest [flags] <cloudtrail-file-or-dir>
   iam-shrink patch --file=<main.tf> [flags] -- <command> [args...]
   iam-shrink prune-role <role-policy.json> [flags]
+  iam-shrink verify <base-policy.json> <shrunk-policy.json>
+  iam-shrink optimize [flags] <policy.json>
   iam-shrink report [flags] <policy.json>
   iam-shrink update-rules [flags]
   iam-shrink state <terraform.tfstate> [policy.json]
   iam-shrink pr-comment [flags]
   iam-shrink gate [flags] <policy.json>
+  iam-shrink ui [flags] [policy.json]
   iam-shrink diff <existing-policy.json> [captured-policy.json]
   iam-shrink lint <policy.json>
   iam-shrink explain <service>:<api>
@@ -60,11 +67,14 @@ Commands:
   ingest           Process AWS CloudTrail logs (.json, .json.gz) and synthesize a policy
   patch            Execute a command and update a Terraform .tf file in-place
   prune-role       Prune unaccessed permissions from an existing IAM role policy
+  verify           Verify mathematically that a shrunk policy is a strict subset of base
+  optimize         Compress policy size and optimize statements to fit under AWS IAM limits
   report           Audit an IAM policy against CIS AWS Foundations or NIST SP 800-53 benchmarks
   update-rules     Download updated CIS & NIST rule schemas to ~/.iam-shrink/rules/
   state            Resolve parameterized ARN variables using Terraform/OpenTofu tfstate
   pr-comment       Generate a formatted GitHub/GitLab Pull Request markdown comment
   gate             Enforce a CI/CD quality gate (blocks builds on wildcards or high risks)
+  ui               Start the local interactive Web UI & access graph visualizer
   diff             Compare an existing IAM policy against captured runtime permissions
   lint             Analyze an IAM policy for security risks and privilege escalation
   explain          Show IAM mapping, required ARNs, and dependencies for an SDK API
@@ -75,7 +85,7 @@ Commands:
   version          Show version information
 
 Flags for 'run':
-  --format string           Output format: json, tf, cdk, cdktf, pulumi, cfn (default "json")
+  --format string           Output format: json, tf, cdk, cdktf, pulumi, cfn, gcp, azure, k8s-rbac, vault (default "json")
   --policy-type string      Policy type: identity, boundary, scp, resource (default "identity")
   --out string              Output file path (default: stdout)
   --patch-file string       Path to Terraform .tf file to patch in-place
@@ -96,7 +106,10 @@ Flags for 'run':
 
 Examples:
   iam-shrink run --format=tf --strict-arns --emit-vars -- go test ./...
-  iam-shrink run --format=cdktf -- python test_suite.py
+  iam-shrink run --format=gcp -- python test_suite.py
+  iam-shrink verify production_base.json shrunk_policy.json
+  iam-shrink optimize --minify policy.json
+  iam-shrink ui --port=8080 policy.json
   iam-shrink report --standard=cis policy.json
   iam-shrink state terraform.tfstate policy.json
   iam-shrink gate --fail-on-wildcard policy.json
@@ -150,6 +163,12 @@ func main() {
 		handlePatch(os.Args[2:])
 	case "prune-role":
 		handlePruneRole(os.Args[2:])
+	case "verify":
+		handleVerify(os.Args[2:])
+	case "optimize":
+		handleOptimize(os.Args[2:])
+	case "ui":
+		handleUI(os.Args[2:])
 	case "report":
 		handleReport(os.Args[2:])
 	case "update-rules":
@@ -211,6 +230,7 @@ func handleRun(args []string) {
 		lintPolicy           bool
 		diffAgainst          string
 		mappingsPath         string
+		optimizeSize         bool
 	)
 
 	fs.StringVar(&formatStr, "format", "json", "Output format: json, tf, cdk, cdktf, pulumi, cfn")
@@ -232,6 +252,7 @@ func handleRun(args []string) {
 	fs.BoolVar(&lintPolicy, "lint", false, "Analyze generated policy for security risks")
 	fs.StringVar(&diffAgainst, "diff-against", "", "Path to existing policy JSON to compare against")
 	fs.StringVar(&mappingsPath, "mappings", "", "Path to custom YAML mappings override file")
+	fs.BoolVar(&optimizeSize, "optimize-size", false, "Minify and compress JSON policy to minimize byte quota")
 
 	var flagArgs []string
 	var cmdArgs []string
@@ -294,6 +315,7 @@ func handleRun(args []string) {
 		DiffAgainst:          diffAgainst,
 		LintPolicy:           lintPolicy,
 		CustomMappings:       mappingsPath,
+		OptimizeSize:         optimizeSize,
 		Stdout:               os.Stdout,
 		Stderr:               os.Stderr,
 	}
@@ -1099,4 +1121,262 @@ func handleSessionStop(mgr *session.Manager, args []string) {
 	}
 
 	fmt.Printf("Session (PID: %d) terminated.\n", state.PID)
+}
+
+func readPolicyInput(path string) ([]byte, error) {
+	if path == "-" {
+		return io.ReadAll(os.Stdin)
+	}
+	return os.ReadFile(path)
+}
+
+func handleVerify(args []string) {
+	fs := flag.NewFlagSet("verify", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	jsonOut := fs.Bool("json", false, "Output verification result as JSON")
+	strict := fs.Bool("strict", true, "Exit with code 1 if shrunk policy is not a strict mathematical subset")
+
+	posArgs, err := parseFlagsAndPosArgs(fs, args)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error parsing flags: %v\n", err)
+		os.Exit(1)
+	}
+
+	if len(posArgs) < 2 {
+		fmt.Fprintln(os.Stderr, "Usage: iam-shrink verify [flags] <base-policy.json> <shrunk-policy.json>")
+		fmt.Fprintln(os.Stderr, "\nPerforms formal subset and equivalence verification to mathematically guarantee")
+		fmt.Fprintln(os.Stderr, "that the shrunk policy grants no permissions beyond the base policy (0 shadow expansions).")
+		os.Exit(1)
+	}
+
+	baseBytes, err := readPolicyInput(posArgs[0])
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error reading base policy %q: %v\n", posArgs[0], err)
+		os.Exit(1)
+	}
+
+	shrunkBytes, err := readPolicyInput(posArgs[1])
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error reading shrunk policy %q: %v\n", posArgs[1], err)
+		os.Exit(1)
+	}
+
+	res, err := verifier.VerifyPolicyBytes(baseBytes, shrunkBytes)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Verification error: %v\n", err)
+		os.Exit(1)
+	}
+
+	if *jsonOut {
+		enc, _ := json.MarshalIndent(res, "", "  ")
+		fmt.Println(string(enc))
+	} else {
+		if res.IsSubset {
+			fmt.Println("✓ Verification PASS: Shrunk policy is a strict mathematical subset of the base policy.")
+			if res.IsEquivalent {
+				fmt.Printf("  Equivalence: base and shrunk policies grant the exact same set of %d actions.\n", res.BaseActionCount)
+			} else {
+				fmt.Printf("  Reduction: reduced from %d base permissions to %d active permissions.\n", res.BaseActionCount, res.TargetActionCount)
+				fmt.Println("  Shadow expansions: 0 (no ungranted actions or wildcard escalations detected).")
+			}
+		} else {
+			fmt.Println("✗ Verification FAIL: Shrunk policy introduces permissions not permitted by base policy!")
+			fmt.Printf("  Found %d shadow expansion(s):\n", len(res.Expansions))
+			for _, exp := range res.Expansions {
+				fmt.Printf("    - Action: %-30s Resource: %-20s (%s)\n", exp.Action, exp.Resource, exp.Reason)
+			}
+		}
+	}
+
+	if *strict && !res.IsSubset {
+		os.Exit(1)
+	}
+}
+
+func handleOptimize(args []string) {
+	fs := flag.NewFlagSet("optimize", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	outFile := fs.String("out", "", "Output file path (default: stdout)")
+	checkOnly := fs.Bool("check", false, "Check quota limits only and exit with status code")
+
+	posArgs, err := parseFlagsAndPosArgs(fs, args)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error parsing flags: %v\n", err)
+		os.Exit(1)
+	}
+
+	var data []byte
+	if len(posArgs) > 0 {
+		data, err = readPolicyInput(posArgs[0])
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error reading policy %q: %v\n", posArgs[0], err)
+			os.Exit(1)
+		}
+	} else {
+		stat, _ := os.Stdin.Stat()
+		if (stat.Mode() & os.ModeCharDevice) == 0 {
+			data, err = io.ReadAll(os.Stdin)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Error reading from stdin: %v\n", err)
+				os.Exit(1)
+			}
+		} else {
+			fmt.Fprintln(os.Stderr, "Usage: iam-shrink optimize [flags] <policy.json>")
+			os.Exit(1)
+		}
+	}
+
+	res, err := optimizer.OptimizePolicyJSON(string(data))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Optimization error: %v\n", err)
+		os.Exit(1)
+	}
+
+	if *checkOnly {
+		fmt.Printf("Policy Size Analysis:\n")
+		fmt.Printf("  Original size:  %d bytes\n", res.OriginalBytes)
+		fmt.Printf("  Optimized size: %d bytes\n", res.OptimizedBytes)
+		fmt.Printf("  Saved:          %d bytes (%.1f%% reduction)\n", res.SavedBytes, res.SavedPct)
+		fmt.Printf("  Inline quota (max 2,048 bytes):   %s\n", quotaStatus(res.ExceedsInline, res.OptimizedBytes, optimizer.LimitInlinePolicy))
+		fmt.Printf("  Managed quota (max 10,240 bytes):  %s\n", quotaStatus(res.ExceedsManaged, res.OptimizedBytes, optimizer.LimitManagedPolicy))
+		if res.ExceedsManaged {
+			os.Exit(2)
+		} else if res.ExceedsInline {
+			os.Exit(1)
+		}
+		os.Exit(0)
+	}
+
+	if *outFile != "" {
+		if err := os.WriteFile(*outFile, []byte(res.OptimizedJSON), 0644); err != nil {
+			fmt.Fprintf(os.Stderr, "Writing output to %s: %v\n", *outFile, err)
+			os.Exit(1)
+		}
+		fmt.Fprintf(os.Stderr, "Optimized policy written to %s (%d bytes, saved %.1f%%)\n", *outFile, res.OptimizedBytes, res.SavedPct)
+	} else {
+		fmt.Println(res.OptimizedJSON)
+	}
+}
+
+func quotaStatus(exceeds bool, current, limit int) string {
+	if exceeds {
+		return fmt.Sprintf("EXCEEDED (%d / %d bytes, +%d bytes over limit)", current, limit, current-limit)
+	}
+	return fmt.Sprintf("PASS (%d / %d bytes, %d bytes remaining)", current, limit, limit-current)
+}
+
+func handleUI(args []string) {
+	fs := flag.NewFlagSet("ui", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	port := fs.Int("port", 8080, "Port to bind local Web UI server")
+
+	posArgs, err := parseFlagsAndPosArgs(fs, args)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error parsing flags: %v\n", err)
+		os.Exit(1)
+	}
+
+	var actionItems []render.ActionItem
+	if len(posArgs) > 0 {
+		data, err := readPolicyInput(posArgs[0])
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error reading policy %q: %v\n", posArgs[0], err)
+			os.Exit(1)
+		}
+		actionItems, err = extractActionsFromPolicyOrEvents(data)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error parsing policy: %v\n", err)
+			os.Exit(1)
+		}
+	} else {
+		stat, _ := os.Stdin.Stat()
+		if (stat.Mode() & os.ModeCharDevice) == 0 {
+			data, err := io.ReadAll(os.Stdin)
+			if err == nil && len(data) > 0 {
+				actionItems, _ = extractActionsFromPolicyOrEvents(data)
+			}
+		}
+	}
+
+	srv, err := webui.NewServer(*port, actionItems)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error starting web UI server: %v\n", err)
+		os.Exit(1)
+	}
+	srv.Start()
+	defer srv.Stop()
+
+	fmt.Printf("iam-shrink Web UI active at http://127.0.0.1:%d\n", srv.Port())
+	fmt.Printf("Loaded %d IAM action(s) for interactive visualization and multi-format export.\n", len(actionItems))
+	fmt.Println("Press Ctrl+C to exit.")
+
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+	<-sigChan
+	fmt.Println("\nShutting down web UI server...")
+}
+
+func extractActionsFromPolicyOrEvents(data []byte) ([]render.ActionItem, error) {
+	var policy struct {
+		Statement []struct {
+			Effect   string      `json:"Effect"`
+			Action   interface{} `json:"Action"`
+			Resource interface{} `json:"Resource"`
+		} `json:"Statement"`
+	}
+
+	if err := json.Unmarshal(data, &policy); err == nil && len(policy.Statement) > 0 {
+		var items []render.ActionItem
+		seen := make(map[string]bool)
+		for _, stmt := range policy.Statement {
+			var actions []string
+			switch v := stmt.Action.(type) {
+			case string:
+				actions = append(actions, v)
+			case []interface{}:
+				for _, act := range v {
+					if s, ok := act.(string); ok {
+						actions = append(actions, s)
+					}
+				}
+			}
+
+			var resources []string
+			switch v := stmt.Resource.(type) {
+			case string:
+				resources = append(resources, v)
+			case []interface{}:
+				for _, res := range v {
+					if s, ok := res.(string); ok {
+						resources = append(resources, s)
+					}
+				}
+			}
+
+			for _, act := range actions {
+				if seen[act] {
+					continue
+				}
+				seen[act] = true
+				svc := "aws"
+				if parts := strings.Split(act, ":"); len(parts) == 2 {
+					svc = parts[0]
+				}
+				items = append(items, render.ActionItem{
+					Action:       act,
+					Service:      svc,
+					ResourceARNs: resources,
+					AccessLevel:  "Active",
+				})
+			}
+		}
+		return items, nil
+	}
+
+	var rawItems []render.ActionItem
+	if err := json.Unmarshal(data, &rawItems); err == nil && len(rawItems) > 0 {
+		return rawItems, nil
+	}
+
+	return nil, fmt.Errorf("unrecognized format: expected IAM policy JSON with Statement array")
 }

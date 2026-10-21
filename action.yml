@@ -1,0 +1,64 @@
+name: 'iam-shrink Least Privilege Generator'
+description: 'Intercepts AWS calls during test runs and generates least-privilege IAM policies in Terraform, CDK, Pulumi, or JSON.'
+author: 'smford'
+branding:
+  icon: 'shield'
+  color: 'blue'
+
+inputs:
+  command:
+    description: 'Target command or test suite to execute under CSM observation'
+    required: true
+    default: 'go test ./...'
+  format:
+    description: 'Output policy format: json, tf, cdk, cdktf, pulumi, cfn, gcp, azure'
+    required: false
+    default: 'tf'
+  out:
+    description: 'Output file path (default: policy.tf)'
+    required: false
+    default: 'policy.tf'
+  strict-arns:
+    description: 'Generate strict parameterized ARNs instead of "*"'
+    required: false
+    default: 'true'
+  proxy:
+    description: 'Enable HTTP/HTTPS proxy to capture exact runtime resource ARNs'
+    required: false
+    default: 'false'
+  compliance:
+    description: 'Audit against compliance benchmarks: cis, nist, all'
+    required: false
+    default: 'cis'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.23'
+        cache: true
+
+    - name: Install iam-shrink
+      shell: bash
+      run: |
+        CGO_ENABLED=0 go build -ldflags="-s -w" -o /usr/local/bin/iam-shrink ./cmd/iam-shrink
+
+    - name: Execute iam-shrink
+      shell: bash
+      run: |
+        EXTRA_FLAGS=""
+        if [ "${{ inputs.proxy }}" = "true" ]; then
+          EXTRA_FLAGS="$EXTRA_FLAGS --proxy"
+        fi
+        if [ -n "${{ inputs.compliance }}" ]; then
+          EXTRA_FLAGS="$EXTRA_FLAGS --compliance=${{ inputs.compliance }}"
+        fi
+
+        /usr/local/bin/iam-shrink run \
+          --format=${{ inputs.format }} \
+          --out=${{ inputs.out }} \
+          --strict-arns=${{ inputs.strict-arns }} \
+          $EXTRA_FLAGS \
+          -- ${{ inputs.command }}

@@ -13,12 +13,16 @@ import (
 type FormatType string
 
 const (
-	FormatJSON   FormatType = "json"
-	FormatTF     FormatType = "tf"
-	FormatCDK    FormatType = "cdk"
-	FormatCDKTF  FormatType = "cdktf"
-	FormatPulumi FormatType = "pulumi"
-	FormatCFN    FormatType = "cfn"
+	FormatJSON    FormatType = "json"
+	FormatTF      FormatType = "tf"
+	FormatCDK     FormatType = "cdk"
+	FormatCDKTF   FormatType = "cdktf"
+	FormatPulumi  FormatType = "pulumi"
+	FormatCFN     FormatType = "cfn"
+	FormatGCP     FormatType = "gcp"
+	FormatAzure   FormatType = "azure"
+	FormatK8sRBAC FormatType = "k8s-rbac"
+	FormatVault   FormatType = "vault"
 )
 
 // ActionItem represents a resolved IAM action with metadata for rendering.

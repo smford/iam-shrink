@@ -37,6 +37,14 @@
   * **Pulumi:** TypeScript `aws.iam.getPolicyDocumentOutput({ ... })`.
   * **CloudFormation:** YAML/JSON `AWS::IAM::ManagedPolicy`.
   * **IAM Policy JSON:** Canonical AWS IAM policy format.
+  * **Multi-Cloud Identity (GCP, Azure, K8s, Vault):** Google Cloud IAM Custom Roles (`--format=gcp`), Azure RBAC Role Definitions (`--format=azure`), Kubernetes RBAC ClusterRoles (`--format=k8s-rbac`), and HashiCorp Vault AWS Secret Engine roles (`--format=vault`).
+* **Formal Verification Engine (`iam-shrink verify`):**
+  * Evaluates whether a shrunk or pruned policy is a strict mathematical subset of an original base policy, detecting and reporting ungranted shadow expansions with 0 false-negatives.
+* **Size Optimization & AWS Quota Analyzer (`iam-shrink optimize`):**
+  * Merges statements with shared resources, minifies JSON, and audits byte footprint against AWS inline (2,048 B) and managed (10,240 B) limits.
+* **Interactive Local Web UI (`iam-shrink ui`):**
+  * Embedded zero-dependency web interface with live access matrix, search/filter controls, and multi-cloud code generator tabs.
+* **Native GitHub Action:** Turnkey composite action via `action.yml` for automated CI/CD policy generation.
 * **OpenTelemetry (OTel) Export (`--export-otel`):**
   * Streams intercepted IAM API calls as standard OpenTelemetry trace spans in OTLP JSON format.
 * **Kubernetes IRSA Manifest Generator (`iam-shrink k8s`):** Generates sidecar and environment specs for EKS pods.
@@ -168,7 +176,7 @@ iam-shrink run --export-otel=traces.json --format=tf -- go test ./...
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--format` | `json` | Format: `json`, `tf`, `cdk`, `cdktf`, `pulumi`, `cfn` |
+| `--format` | `json` | Format: `json`, `tf`, `cdk`, `cdktf`, `pulumi`, `cfn`, `gcp`, `azure`, `k8s-rbac`, `vault` |
 | `--policy-type` | `identity` | Type: `identity`, `boundary`, `scp`, `resource` |
 | `--out` | `""` | Output file path (if omitted, writes to stdout) |
 | `--patch-file` | `""` | Path to Terraform `.tf` file to patch directly in-place |
@@ -179,6 +187,7 @@ iam-shrink run --export-otel=traces.json --format=tf -- go test ./...
 | `--emit-vars` | `false` | Emit companion Terraform variable definitions for ARNs |
 | `--conditions` | `false` | Synthesize condition blocks (e.g. `aws:RequestedRegion`) |
 | `--synthesize-notaction` | `false` | Invert policy into explicit Deny with NotAction |
+| `--optimize-size` | `false` | Minify JSON policy to minimize byte quota against AWS limits |
 | `--compliance` | `""` | Evaluate compliance benchmark: `cis`, `nist`, `all` |
 | `--export-otel` | `""` | Export captured calls to OpenTelemetry trace JSON file |
 | `--proxy` | `false` | Enable local HTTP/HTTPS proxy to capture exact concrete ARNs |
@@ -296,6 +305,100 @@ iam-shrink session dump --format=tf
 
 # 5. Stop session
 iam-shrink session stop
+```
+
+---
+
+### 11. Formal Subset & Equivalence Verification (`iam-shrink verify`)
+
+Mathematically guarantees that a shrunk or pruned IAM policy is a strict subset of the original production role policy, catching shadow expansions and ungranted actions:
+
+```bash
+# Verify shrunk policy is a subset of base policy (exits 1 on ungranted actions)
+iam-shrink verify base_policy.json shrunk_policy.json
+
+# Emit JSON result for automated CI pipelines
+iam-shrink verify --json base_policy.json shrunk_policy.json
+```
+
+---
+
+### 12. Policy Size Compression & Quota Optimization (`iam-shrink optimize`)
+
+AWS enforces strict hard quotas on IAM policy byte sizes: **2,048 bytes** for inline policies and **10,240 bytes** for managed policies. `iam-shrink optimize` merges statements with identical resources and strips extraneous formatting:
+
+```bash
+# Analyze size against AWS inline and managed quotas
+iam-shrink optimize --check policy.json
+
+# Compress and output minified JSON
+iam-shrink optimize --out=minified_policy.json policy.json
+
+# Or pass during runtime generation
+iam-shrink run --format=json --optimize-size -- go test ./...
+```
+
+---
+
+### 13. Multi-Cloud IAM & RBAC Translation
+
+Translate captured AWS runtime telemetry directly into equivalent identity configurations across other cloud environments:
+
+* **Google Cloud IAM Custom Roles (`--format=gcp`):** Maps AWS actions to GCP permissions (e.g., `s3:GetObject` $\rightarrow$ `storage.objects.get`).
+* **Azure RBAC Role Definitions (`--format=azure`):** Maps AWS actions to Azure Resource Provider operations (e.g., `s3:GetObject` $\rightarrow$ `Microsoft.Storage/storageAccounts/blobServices/containers/blobs/read`).
+* **Kubernetes RBAC ClusterRoles (`--format=k8s-rbac`):** Maps AWS actions to Kubernetes apiGroups, resources, and verbs.
+* **HashiCorp Vault AWS Secret Engine (`--format=vault`):** Generates Vault CLI configuration commands for dynamic AWS credentials.
+
+```bash
+# Generate GCP IAM Custom Role YAML
+iam-shrink run --format=gcp -- pytest tests/
+
+# Generate Azure RBAC Role Definition JSON
+iam-shrink run --format=azure -- npm test
+
+# Generate Kubernetes RBAC ClusterRole YAML
+iam-shrink run --format=k8s-rbac -- go test ./...
+```
+
+---
+
+### 14. Interactive Local Web UI (`iam-shrink ui`)
+
+Launch an embedded, zero-dependency HTML5 single-page visualizer on `127.0.0.1:8080`:
+
+```bash
+# Launch visualizer with a policy file
+iam-shrink ui --port=8080 policy.json
+
+# Pipe policy directly into Web UI
+cat policy.json | iam-shrink ui
+```
+
+* Search and filter captured actions by service prefix or access level.
+* Toggle individual permissions with live interactive code previews across Terraform, AWS CDK, GCP IAM, Azure RBAC, K8s RBAC, and Vault.
+
+---
+
+### 15. Native GitHub Action
+
+Use `iam-shrink` directly in GitHub Actions workflows:
+
+```yaml
+name: IAM Least Privilege Check
+on: [pull_request]
+
+jobs:
+  least-privilege:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: smford/iam-shrink@main
+        with:
+          command: 'go test -v ./...'
+          format: 'tf'
+          out: 'policy.tf'
+          strict-arns: 'true'
+          compliance: 'cis'
 ```
 
 ---

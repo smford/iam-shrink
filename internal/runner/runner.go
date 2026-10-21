@@ -18,6 +18,8 @@ import (
 	"github.com/smford/iam-shrink/internal/diff"
 	"github.com/smford/iam-shrink/internal/linter"
 	"github.com/smford/iam-shrink/internal/mapper"
+	"github.com/smford/iam-shrink/internal/multicloud"
+	"github.com/smford/iam-shrink/internal/optimizer"
 	"github.com/smford/iam-shrink/internal/otel"
 	"github.com/smford/iam-shrink/internal/patcher"
 	"github.com/smford/iam-shrink/internal/proxy"
@@ -46,6 +48,7 @@ type Options struct {
 	DiffAgainst          string
 	LintPolicy           bool
 	CustomMappings       string // Path to optional YAML overrides
+	OptimizeSize         bool   // Compress and minify output policy JSON
 	Stdout               io.Writer
 	Stderr               io.Writer
 }
@@ -228,9 +231,33 @@ func Run(ctx context.Context, opts Options) (*Result, error) {
 		PrincipalARN:         opts.PrincipalARN,
 	}
 
-	renderedPolicy, err := render.Render(actionItems, renderOpts)
+	var renderedPolicy string
+	switch opts.Format {
+	case render.FormatGCP:
+		renderedPolicy, err = multicloud.RenderGCPIAMCustomRole(actionItems)
+	case render.FormatAzure:
+		renderedPolicy, err = multicloud.RenderAzureRBAC(actionItems)
+	case render.FormatK8sRBAC:
+		renderedPolicy = multicloud.RenderK8sRBAC(actionItems)
+	case render.FormatVault:
+		jsonPol, jErr := render.Render(actionItems, render.RenderOptions{Format: render.FormatJSON})
+		if jErr != nil {
+			return nil, fmt.Errorf("rendering vault policy: %w", jErr)
+		}
+		renderedPolicy = multicloud.RenderVaultSecretRole(jsonPol)
+	default:
+		renderedPolicy, err = render.Render(actionItems, renderOpts)
+	}
+
 	if err != nil {
 		return nil, fmt.Errorf("rendering policy: %w", err)
+	}
+
+	if opts.OptimizeSize && (opts.Format == render.FormatJSON || opts.Format == "") {
+		optRes, oErr := optimizer.OptimizePolicyJSON(renderedPolicy)
+		if oErr == nil {
+			renderedPolicy = optRes.OptimizedJSON
+		}
 	}
 
 	// Optional OpenTelemetry Export
