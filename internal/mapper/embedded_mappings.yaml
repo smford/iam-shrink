@@ -1,0 +1,910 @@
+# Default SDK-to-IAM Action Mappings
+version: 1
+mappings:
+  # S3
+  - service: S3
+    api: ListObjectsV2
+    actions:
+      - s3:ListBucket
+    resource_arns:
+      - "arn:aws:s3:::${var.bucket_name}"
+  - service: S3
+    api: ListObjects
+    actions:
+      - s3:ListBucket
+    resource_arns:
+      - "arn:aws:s3:::${var.bucket_name}"
+  - service: S3
+    api: HeadBucket
+    actions:
+      - s3:ListBucket
+    resource_arns:
+      - "arn:aws:s3:::${var.bucket_name}"
+  - service: S3
+    api: GetObject
+    actions:
+      - s3:GetObject
+    resource_arns:
+      - "arn:aws:s3:::${var.bucket_name}/*"
+  - service: S3
+    api: HeadObject
+    actions:
+      - s3:GetObject
+    resource_arns:
+      - "arn:aws:s3:::${var.bucket_name}/*"
+  - service: S3
+    api: PutObject
+    actions:
+      - s3:PutObject
+    resource_arns:
+      - "arn:aws:s3:::${var.bucket_name}/*"
+  - service: S3
+    api: DeleteObject
+    actions:
+      - s3:DeleteObject
+    resource_arns:
+      - "arn:aws:s3:::${var.bucket_name}/*"
+  - service: S3
+    api: DeleteObjects
+    actions:
+      - s3:DeleteObject
+    resource_arns:
+      - "arn:aws:s3:::${var.bucket_name}/*"
+  - service: S3
+    api: GetBucketLocation
+    actions:
+      - s3:GetBucketLocation
+    resource_arns:
+      - "arn:aws:s3:::${var.bucket_name}"
+  - service: S3
+    api: CreateBucket
+    actions:
+      - s3:CreateBucket
+    resource_arns:
+      - "arn:aws:s3:::${var.bucket_name}"
+  - service: S3
+    api: DeleteBucket
+    actions:
+      - s3:DeleteBucket
+    resource_arns:
+      - "arn:aws:s3:::${var.bucket_name}"
+  - service: S3
+    api: CreateMultipartUpload
+    actions:
+      - s3:PutObject
+    resource_arns:
+      - "arn:aws:s3:::${var.bucket_name}/*"
+  - service: S3
+    api: UploadPart
+    actions:
+      - s3:PutObject
+    resource_arns:
+      - "arn:aws:s3:::${var.bucket_name}/*"
+  - service: S3
+    api: CompleteMultipartUpload
+    actions:
+      - s3:PutObject
+    resource_arns:
+      - "arn:aws:s3:::${var.bucket_name}/*"
+  - service: S3
+    api: AbortMultipartUpload
+    actions:
+      - s3:AbortMultipartUpload
+    resource_arns:
+      - "arn:aws:s3:::${var.bucket_name}/*"
+  - service: S3
+    api: UploadPartCopy
+    actions:
+      - s3:GetObject
+      - s3:PutObject
+    resource_arns:
+      - "arn:aws:s3:::${var.bucket_name}/*"
+  - service: S3
+    api: GetObjectTagging
+    actions:
+      - s3:GetObjectTagging
+    resource_arns:
+      - "arn:aws:s3:::${var.bucket_name}/*"
+  - service: S3
+    api: PutObjectTagging
+    actions:
+      - s3:PutObjectTagging
+    resource_arns:
+      - "arn:aws:s3:::${var.bucket_name}/*"
+  - service: S3
+    api: ListBuckets
+    actions:
+      - s3:ListAllMyBuckets
+    resource_arns:
+      - "arn:aws:s3:::*"
+
+  # DynamoDB
+  - service: DynamoDB
+    api: GetItem
+    actions:
+      - dynamodb:GetItem
+    resource_arns:
+      - "arn:aws:dynamodb:${var.region}:${var.account_id}:table/${var.table_name}"
+  - service: DynamoDB
+    api: PutItem
+    actions:
+      - dynamodb:PutItem
+    resource_arns:
+      - "arn:aws:dynamodb:${var.region}:${var.account_id}:table/${var.table_name}"
+  - service: DynamoDB
+    api: UpdateItem
+    actions:
+      - dynamodb:UpdateItem
+    resource_arns:
+      - "arn:aws:dynamodb:${var.region}:${var.account_id}:table/${var.table_name}"
+  - service: DynamoDB
+    api: DeleteItem
+    actions:
+      - dynamodb:DeleteItem
+    resource_arns:
+      - "arn:aws:dynamodb:${var.region}:${var.account_id}:table/${var.table_name}"
+  - service: DynamoDB
+    api: Query
+    actions:
+      - dynamodb:Query
+    resource_arns:
+      - "arn:aws:dynamodb:${var.region}:${var.account_id}:table/${var.table_name}"
+      - "arn:aws:dynamodb:${var.region}:${var.account_id}:table/${var.table_name}/index/*"
+  - service: DynamoDB
+    api: Scan
+    actions:
+      - dynamodb:Scan
+    resource_arns:
+      - "arn:aws:dynamodb:${var.region}:${var.account_id}:table/${var.table_name}"
+      - "arn:aws:dynamodb:${var.region}:${var.account_id}:table/${var.table_name}/index/*"
+  - service: DynamoDB
+    api: BatchGetItem
+    actions:
+      - dynamodb:BatchGetItem
+    resource_arns:
+      - "arn:aws:dynamodb:${var.region}:${var.account_id}:table/${var.table_name}"
+  - service: DynamoDB
+    api: BatchWriteItem
+    actions:
+      - dynamodb:BatchWriteItem
+    resource_arns:
+      - "arn:aws:dynamodb:${var.region}:${var.account_id}:table/${var.table_name}"
+  - service: DynamoDB
+    api: TransactGetItems
+    actions:
+      - dynamodb:TransactGetItems
+    resource_arns:
+      - "arn:aws:dynamodb:${var.region}:${var.account_id}:table/${var.table_name}"
+  - service: DynamoDB
+    api: TransactWriteItems
+    actions:
+      - dynamodb:TransactWriteItems
+    resource_arns:
+      - "arn:aws:dynamodb:${var.region}:${var.account_id}:table/${var.table_name}"
+  - service: DynamoDB
+    api: DescribeTable
+    actions:
+      - dynamodb:DescribeTable
+    resource_arns:
+      - "arn:aws:dynamodb:${var.region}:${var.account_id}:table/${var.table_name}"
+  - service: DynamoDB
+    api: CreateTable
+    actions:
+      - dynamodb:CreateTable
+    resource_arns:
+      - "arn:aws:dynamodb:${var.region}:${var.account_id}:table/${var.table_name}"
+  - service: DynamoDB
+    api: DeleteTable
+    actions:
+      - dynamodb:DeleteTable
+    resource_arns:
+      - "arn:aws:dynamodb:${var.region}:${var.account_id}:table/${var.table_name}"
+
+  # SQS
+  - service: SQS
+    api: SendMessage
+    actions:
+      - sqs:SendMessage
+    resource_arns:
+      - "arn:aws:sqs:${var.region}:${var.account_id}:${var.queue_name}"
+  - service: SQS
+    api: SendMessageBatch
+    actions:
+      - sqs:SendMessage
+    resource_arns:
+      - "arn:aws:sqs:${var.region}:${var.account_id}:${var.queue_name}"
+  - service: SQS
+    api: ReceiveMessage
+    actions:
+      - sqs:ReceiveMessage
+    resource_arns:
+      - "arn:aws:sqs:${var.region}:${var.account_id}:${var.queue_name}"
+  - service: SQS
+    api: DeleteMessage
+    actions:
+      - sqs:DeleteMessage
+    resource_arns:
+      - "arn:aws:sqs:${var.region}:${var.account_id}:${var.queue_name}"
+  - service: SQS
+    api: DeleteMessageBatch
+    actions:
+      - sqs:DeleteMessage
+    resource_arns:
+      - "arn:aws:sqs:${var.region}:${var.account_id}:${var.queue_name}"
+  - service: SQS
+    api: GetQueueUrl
+    actions:
+      - sqs:GetQueueUrl
+    resource_arns:
+      - "arn:aws:sqs:${var.region}:${var.account_id}:${var.queue_name}"
+  - service: SQS
+    api: GetQueueAttributes
+    actions:
+      - sqs:GetQueueAttributes
+    resource_arns:
+      - "arn:aws:sqs:${var.region}:${var.account_id}:${var.queue_name}"
+  - service: SQS
+    api: ChangeMessageVisibility
+    actions:
+      - sqs:ChangeMessageVisibility
+    resource_arns:
+      - "arn:aws:sqs:${var.region}:${var.account_id}:${var.queue_name}"
+  - service: SQS
+    api: CreateQueue
+    actions:
+      - sqs:CreateQueue
+    resource_arns:
+      - "arn:aws:sqs:${var.region}:${var.account_id}:${var.queue_name}"
+  - service: SQS
+    api: DeleteQueue
+    actions:
+      - sqs:DeleteQueue
+    resource_arns:
+      - "arn:aws:sqs:${var.region}:${var.account_id}:${var.queue_name}"
+  - service: SQS
+    api: PurgeQueue
+    actions:
+      - sqs:PurgeQueue
+    resource_arns:
+      - "arn:aws:sqs:${var.region}:${var.account_id}:${var.queue_name}"
+
+  # SNS
+  - service: SNS
+    api: Publish
+    actions:
+      - sns:Publish
+    resource_arns:
+      - "arn:aws:sns:${var.region}:${var.account_id}:${var.topic_name}"
+  - service: SNS
+    api: PublishBatch
+    actions:
+      - sns:Publish
+    resource_arns:
+      - "arn:aws:sns:${var.region}:${var.account_id}:${var.topic_name}"
+  - service: SNS
+    api: Subscribe
+    actions:
+      - sns:Subscribe
+    resource_arns:
+      - "arn:aws:sns:${var.region}:${var.account_id}:${var.topic_name}"
+  - service: SNS
+    api: Unsubscribe
+    actions:
+      - sns:Unsubscribe
+    resource_arns:
+      - "arn:aws:sns:${var.region}:${var.account_id}:${var.topic_name}"
+  - service: SNS
+    api: CreateTopic
+    actions:
+      - sns:CreateTopic
+    resource_arns:
+      - "arn:aws:sns:${var.region}:${var.account_id}:${var.topic_name}"
+  - service: SNS
+    api: DeleteTopic
+    actions:
+      - sns:DeleteTopic
+    resource_arns:
+      - "arn:aws:sns:${var.region}:${var.account_id}:${var.topic_name}"
+  - service: SNS
+    api: ListTopics
+    actions:
+      - sns:ListTopics
+    resource_arns:
+      - "*"
+  - service: SNS
+    api: ListSubscriptions
+    actions:
+      - sns:ListSubscriptions
+    resource_arns:
+      - "*"
+
+  # Lambda
+  - service: Lambda
+    api: Invoke
+    actions:
+      - lambda:InvokeFunction
+    resource_arns:
+      - "arn:aws:lambda:${var.region}:${var.account_id}:function:${var.function_name}"
+  - service: Lambda
+    api: InvokeAsync
+    actions:
+      - lambda:InvokeFunction
+    resource_arns:
+      - "arn:aws:lambda:${var.region}:${var.account_id}:function:${var.function_name}"
+  - service: Lambda
+    api: GetFunction
+    actions:
+      - lambda:GetFunction
+    resource_arns:
+      - "arn:aws:lambda:${var.region}:${var.account_id}:function:${var.function_name}"
+  - service: Lambda
+    api: CreateFunction
+    actions:
+      - lambda:CreateFunction
+    resource_arns:
+      - "arn:aws:lambda:${var.region}:${var.account_id}:function:${var.function_name}"
+    dependent_actions:
+      - iam:PassRole
+  - service: Lambda
+    api: UpdateFunctionCode
+    actions:
+      - lambda:UpdateFunctionCode
+    resource_arns:
+      - "arn:aws:lambda:${var.region}:${var.account_id}:function:${var.function_name}"
+  - service: Lambda
+    api: UpdateFunctionConfiguration
+    actions:
+      - lambda:UpdateFunctionConfiguration
+    resource_arns:
+      - "arn:aws:lambda:${var.region}:${var.account_id}:function:${var.function_name}"
+  - service: Lambda
+    api: DeleteFunction
+    actions:
+      - lambda:DeleteFunction
+    resource_arns:
+      - "arn:aws:lambda:${var.region}:${var.account_id}:function:${var.function_name}"
+  - service: Lambda
+    api: ListFunctions
+    actions:
+      - lambda:ListFunctions
+    resource_arns:
+      - "*"
+
+  # KMS
+  - service: KMS
+    api: Decrypt
+    actions:
+      - kms:Decrypt
+    resource_arns:
+      - "arn:aws:kms:${var.region}:${var.account_id}:key/${var.key_id}"
+  - service: KMS
+    api: Encrypt
+    actions:
+      - kms:Encrypt
+    resource_arns:
+      - "arn:aws:kms:${var.region}:${var.account_id}:key/${var.key_id}"
+  - service: KMS
+    api: GenerateDataKey
+    actions:
+      - kms:GenerateDataKey
+    resource_arns:
+      - "arn:aws:kms:${var.region}:${var.account_id}:key/${var.key_id}"
+  - service: KMS
+    api: GenerateDataKeyWithoutPlaintext
+    actions:
+      - kms:GenerateDataKeyWithoutPlaintext
+    resource_arns:
+      - "arn:aws:kms:${var.region}:${var.account_id}:key/${var.key_id}"
+  - service: KMS
+    api: DescribeKey
+    actions:
+      - kms:DescribeKey
+    resource_arns:
+      - "arn:aws:kms:${var.region}:${var.account_id}:key/${var.key_id}"
+  - service: KMS
+    api: CreateKey
+    actions:
+      - kms:CreateKey
+    resource_arns:
+      - "*"
+  - service: KMS
+    api: CreateGrant
+    actions:
+      - kms:CreateGrant
+    resource_arns:
+      - "arn:aws:kms:${var.region}:${var.account_id}:key/${var.key_id}"
+  - service: KMS
+    api: ListKeys
+    actions:
+      - kms:ListKeys
+    resource_arns:
+      - "*"
+  - service: KMS
+    api: ListAliases
+    actions:
+      - kms:ListAliases
+    resource_arns:
+      - "*"
+
+  # SecretsManager
+  - service: SecretsManager
+    api: GetSecretValue
+    actions:
+      - secretsmanager:GetSecretValue
+    resource_arns:
+      - "arn:aws:secretsmanager:${var.region}:${var.account_id}:secret:${var.secret_name}"
+    dependent_actions:
+      - kms:Decrypt
+  - service: SecretsManager
+    api: DescribeSecret
+    actions:
+      - secretsmanager:DescribeSecret
+    resource_arns:
+      - "arn:aws:secretsmanager:${var.region}:${var.account_id}:secret:${var.secret_name}"
+  - service: SecretsManager
+    api: PutSecretValue
+    actions:
+      - secretsmanager:PutSecretValue
+    resource_arns:
+      - "arn:aws:secretsmanager:${var.region}:${var.account_id}:secret:${var.secret_name}"
+  - service: SecretsManager
+    api: CreateSecret
+    actions:
+      - secretsmanager:CreateSecret
+    resource_arns:
+      - "arn:aws:secretsmanager:${var.region}:${var.account_id}:secret:${var.secret_name}"
+  - service: SecretsManager
+    api: UpdateSecret
+    actions:
+      - secretsmanager:UpdateSecret
+    resource_arns:
+      - "arn:aws:secretsmanager:${var.region}:${var.account_id}:secret:${var.secret_name}"
+  - service: SecretsManager
+    api: DeleteSecret
+    actions:
+      - secretsmanager:DeleteSecret
+    resource_arns:
+      - "arn:aws:secretsmanager:${var.region}:${var.account_id}:secret:${var.secret_name}"
+  - service: SecretsManager
+    api: ListSecrets
+    actions:
+      - secretsmanager:ListSecrets
+    resource_arns:
+      - "*"
+
+  # SSM
+  - service: SSM
+    api: GetParameter
+    actions:
+      - ssm:GetParameter
+    resource_arns:
+      - "arn:aws:ssm:${var.region}:${var.account_id}:parameter/${var.parameter_name}"
+    dependent_actions:
+      - kms:Decrypt
+  - service: SSM
+    api: GetParameters
+    actions:
+      - ssm:GetParameters
+    resource_arns:
+      - "arn:aws:ssm:${var.region}:${var.account_id}:parameter/${var.parameter_name}"
+    dependent_actions:
+      - kms:Decrypt
+  - service: SSM
+    api: GetParametersByPath
+    actions:
+      - ssm:GetParametersByPath
+    resource_arns:
+      - "arn:aws:ssm:${var.region}:${var.account_id}:parameter/${var.path}/*"
+    dependent_actions:
+      - kms:Decrypt
+  - service: SSM
+    api: PutParameter
+    actions:
+      - ssm:PutParameter
+    resource_arns:
+      - "arn:aws:ssm:${var.region}:${var.account_id}:parameter/${var.parameter_name}"
+  - service: SSM
+    api: DeleteParameter
+    actions:
+      - ssm:DeleteParameter
+    resource_arns:
+      - "arn:aws:ssm:${var.region}:${var.account_id}:parameter/${var.parameter_name}"
+  - service: SSM
+    api: DeleteParameters
+    actions:
+      - ssm:DeleteParameters
+    resource_arns:
+      - "arn:aws:ssm:${var.region}:${var.account_id}:parameter/${var.parameter_name}"
+  - service: SSM
+    api: DescribeParameters
+    actions:
+      - ssm:DescribeParameters
+    resource_arns:
+      - "*"
+
+  # STS
+  - service: STS
+    api: GetCallerIdentity
+    actions:
+      - sts:GetCallerIdentity
+    resource_arns:
+      - "*"
+  - service: STS
+    api: AssumeRole
+    actions:
+      - sts:AssumeRole
+    resource_arns:
+      - "arn:aws:iam::${var.account_id}:role/${var.role_name}"
+  - service: STS
+    api: AssumeRoleWithWebIdentity
+    actions:
+      - sts:AssumeRoleWithWebIdentity
+    resource_arns:
+      - "arn:aws:iam::${var.account_id}:role/${var.role_name}"
+  - service: STS
+    api: GetSessionToken
+    actions:
+      - sts:GetSessionToken
+    resource_arns:
+      - "*"
+
+  # Logs (CloudWatch Logs)
+  - service: Logs
+    api: CreateLogGroup
+    actions:
+      - logs:CreateLogGroup
+    resource_arns:
+      - "arn:aws:logs:${var.region}:${var.account_id}:log-group:${var.log_group_name}"
+  - service: Logs
+    api: CreateLogStream
+    actions:
+      - logs:CreateLogStream
+    resource_arns:
+      - "arn:aws:logs:${var.region}:${var.account_id}:log-group:${var.log_group_name}:log-stream:${var.log_stream_name}"
+  - service: Logs
+    api: PutLogEvents
+    actions:
+      - logs:PutLogEvents
+    resource_arns:
+      - "arn:aws:logs:${var.region}:${var.account_id}:log-group:${var.log_group_name}:log-stream:${var.log_stream_name}"
+  - service: Logs
+    api: DescribeLogGroups
+    actions:
+      - logs:DescribeLogGroups
+    resource_arns:
+      - "arn:aws:logs:${var.region}:${var.account_id}:log-group:*"
+  - service: Logs
+    api: DescribeLogStreams
+    actions:
+      - logs:DescribeLogStreams
+    resource_arns:
+      - "arn:aws:logs:${var.region}:${var.account_id}:log-group:${var.log_group_name}:*"
+  - service: Logs
+    api: FilterLogEvents
+    actions:
+      - logs:FilterLogEvents
+    resource_arns:
+      - "arn:aws:logs:${var.region}:${var.account_id}:log-group:${var.log_group_name}:*"
+  - service: Logs
+    api: GetLogEvents
+    actions:
+      - logs:GetLogEvents
+    resource_arns:
+      - "arn:aws:logs:${var.region}:${var.account_id}:log-group:${var.log_group_name}:log-stream:${var.log_stream_name}"
+  - service: Logs
+    api: DeleteLogGroup
+    actions:
+      - logs:DeleteLogGroup
+    resource_arns:
+      - "arn:aws:logs:${var.region}:${var.account_id}:log-group:${var.log_group_name}"
+  - service: Logs
+    api: DeleteLogStream
+    actions:
+      - logs:DeleteLogStream
+    resource_arns:
+      - "arn:aws:logs:${var.region}:${var.account_id}:log-group:${var.log_group_name}:log-stream:${var.log_stream_name}"
+
+  # Events (EventBridge)
+  - service: Events
+    api: PutEvents
+    actions:
+      - events:PutEvents
+    resource_arns:
+      - "arn:aws:events:${var.region}:${var.account_id}:event-bus/${var.event_bus_name}"
+  - service: Events
+    api: PutRule
+    actions:
+      - events:PutRule
+    resource_arns:
+      - "arn:aws:events:${var.region}:${var.account_id}:rule/${var.rule_name}"
+  - service: Events
+    api: PutTargets
+    actions:
+      - events:PutTargets
+    resource_arns:
+      - "arn:aws:events:${var.region}:${var.account_id}:rule/${var.rule_name}"
+  - service: Events
+    api: DeleteRule
+    actions:
+      - events:DeleteRule
+    resource_arns:
+      - "arn:aws:events:${var.region}:${var.account_id}:rule/${var.rule_name}"
+  - service: Events
+    api: RemoveTargets
+    actions:
+      - events:RemoveTargets
+    resource_arns:
+      - "arn:aws:events:${var.region}:${var.account_id}:rule/${var.rule_name}"
+  - service: Events
+    api: ListRules
+    actions:
+      - events:ListRules
+    resource_arns:
+      - "*"
+  - service: Events
+    api: DescribeRule
+    actions:
+      - events:DescribeRule
+    resource_arns:
+      - "arn:aws:events:${var.region}:${var.account_id}:rule/${var.rule_name}"
+
+  # ECR
+  - service: ECR
+    api: GetAuthorizationToken
+    actions:
+      - ecr:GetAuthorizationToken
+    resource_arns:
+      - "*"
+  - service: ECR
+    api: BatchGetImage
+    actions:
+      - ecr:BatchGetImage
+    resource_arns:
+      - "arn:aws:ecr:${var.region}:${var.account_id}:repository/${var.repository_name}"
+  - service: ECR
+    api: GetDownloadUrlForLayer
+    actions:
+      - ecr:GetDownloadUrlForLayer
+    resource_arns:
+      - "arn:aws:ecr:${var.region}:${var.account_id}:repository/${var.repository_name}"
+  - service: ECR
+    api: BatchCheckLayerAvailability
+    actions:
+      - ecr:BatchCheckLayerAvailability
+    resource_arns:
+      - "arn:aws:ecr:${var.region}:${var.account_id}:repository/${var.repository_name}"
+  - service: ECR
+    api: PutImage
+    actions:
+      - ecr:PutImage
+    resource_arns:
+      - "arn:aws:ecr:${var.region}:${var.account_id}:repository/${var.repository_name}"
+  - service: ECR
+    api: InitiateLayerUpload
+    actions:
+      - ecr:InitiateLayerUpload
+    resource_arns:
+      - "arn:aws:ecr:${var.region}:${var.account_id}:repository/${var.repository_name}"
+  - service: ECR
+    api: UploadLayerPart
+    actions:
+      - ecr:UploadLayerPart
+    resource_arns:
+      - "arn:aws:ecr:${var.region}:${var.account_id}:repository/${var.repository_name}"
+  - service: ECR
+    api: CompleteLayerUpload
+    actions:
+      - ecr:CompleteLayerUpload
+    resource_arns:
+      - "arn:aws:ecr:${var.region}:${var.account_id}:repository/${var.repository_name}"
+  - service: ECR
+    api: DescribeRepositories
+    actions:
+      - ecr:DescribeRepositories
+    resource_arns:
+      - "arn:aws:ecr:${var.region}:${var.account_id}:repository/${var.repository_name}"
+  - service: ECR
+    api: CreateRepository
+    actions:
+      - ecr:CreateRepository
+    resource_arns:
+      - "arn:aws:ecr:${var.region}:${var.account_id}:repository/${var.repository_name}"
+
+  # ECS
+  - service: ECS
+    api: RunTask
+    actions:
+      - ecs:RunTask
+    resource_arns:
+      - "arn:aws:ecs:${var.region}:${var.account_id}:task-definition/${var.task_definition_family}:*"
+    dependent_actions:
+      - iam:PassRole
+  - service: ECS
+    api: StartTask
+    actions:
+      - ecs:StartTask
+    resource_arns:
+      - "arn:aws:ecs:${var.region}:${var.account_id}:task-definition/${var.task_definition_family}:*"
+  - service: ECS
+    api: StopTask
+    actions:
+      - ecs:StopTask
+    resource_arns:
+      - "arn:aws:ecs:${var.region}:${var.account_id}:task/${var.cluster_name}/*"
+  - service: ECS
+    api: DescribeTasks
+    actions:
+      - ecs:DescribeTasks
+    resource_arns:
+      - "arn:aws:ecs:${var.region}:${var.account_id}:task/${var.cluster_name}/*"
+  - service: ECS
+    api: ListTasks
+    actions:
+      - ecs:ListTasks
+    resource_arns:
+      - "*"
+  - service: ECS
+    api: RegisterTaskDefinition
+    actions:
+      - ecs:RegisterTaskDefinition
+    resource_arns:
+      - "*"
+    dependent_actions:
+      - iam:PassRole
+  - service: ECS
+    api: UpdateService
+    actions:
+      - ecs:UpdateService
+    resource_arns:
+      - "arn:aws:ecs:${var.region}:${var.account_id}:service/${var.cluster_name}/${var.service_name}"
+  - service: ECS
+    api: DescribeServices
+    actions:
+      - ecs:DescribeServices
+    resource_arns:
+      - "arn:aws:ecs:${var.region}:${var.account_id}:service/${var.cluster_name}/${var.service_name}"
+  - service: ECS
+    api: CreateService
+    actions:
+      - ecs:CreateService
+    resource_arns:
+      - "arn:aws:ecs:${var.region}:${var.account_id}:service/${var.cluster_name}/${var.service_name}"
+    dependent_actions:
+      - iam:PassRole
+
+  # EC2
+  - service: EC2
+    api: DescribeInstances
+    actions:
+      - ec2:DescribeInstances
+    resource_arns:
+      - "*"
+  - service: EC2
+    api: RunInstances
+    actions:
+      - ec2:RunInstances
+    resource_arns:
+      - "arn:aws:ec2:${var.region}:${var.account_id}:instance/*"
+      - "arn:aws:ec2:${var.region}::image/*"
+      - "arn:aws:ec2:${var.region}:${var.account_id}:security-group/*"
+      - "arn:aws:ec2:${var.region}:${var.account_id}:subnet/*"
+      - "arn:aws:ec2:${var.region}:${var.account_id}:network-interface/*"
+      - "arn:aws:ec2:${var.region}:${var.account_id}:volume/*"
+    dependent_actions:
+      - iam:PassRole
+  - service: EC2
+    api: StartInstances
+    actions:
+      - ec2:StartInstances
+    resource_arns:
+      - "arn:aws:ec2:${var.region}:${var.account_id}:instance/*"
+  - service: EC2
+    api: StopInstances
+    actions:
+      - ec2:StopInstances
+    resource_arns:
+      - "arn:aws:ec2:${var.region}:${var.account_id}:instance/*"
+  - service: EC2
+    api: TerminateInstances
+    actions:
+      - ec2:TerminateInstances
+    resource_arns:
+      - "arn:aws:ec2:${var.region}:${var.account_id}:instance/*"
+  - service: EC2
+    api: DescribeSecurityGroups
+    actions:
+      - ec2:DescribeSecurityGroups
+    resource_arns:
+      - "*"
+  - service: EC2
+    api: DescribeVpcs
+    actions:
+      - ec2:DescribeVpcs
+    resource_arns:
+      - "*"
+  - service: EC2
+    api: DescribeSubnets
+    actions:
+      - ec2:DescribeSubnets
+    resource_arns:
+      - "*"
+
+  # IAM
+  - service: IAM
+    api: GetUser
+    actions:
+      - iam:GetUser
+    resource_arns:
+      - "arn:aws:iam::${var.account_id}:user/${var.user_name}"
+  - service: IAM
+    api: GetRole
+    actions:
+      - iam:GetRole
+    resource_arns:
+      - "arn:aws:iam::${var.account_id}:role/${var.role_name}"
+  - service: IAM
+    api: PassRole
+    actions:
+      - iam:PassRole
+    resource_arns:
+      - "arn:aws:iam::${var.account_id}:role/${var.role_name}"
+  - service: IAM
+    api: CreateRole
+    actions:
+      - iam:CreateRole
+    resource_arns:
+      - "arn:aws:iam::${var.account_id}:role/${var.role_name}"
+  - service: IAM
+    api: AttachRolePolicy
+    actions:
+      - iam:AttachRolePolicy
+    resource_arns:
+      - "arn:aws:iam::${var.account_id}:role/${var.role_name}"
+  - service: IAM
+    api: PutRolePolicy
+    actions:
+      - iam:PutRolePolicy
+    resource_arns:
+      - "arn:aws:iam::${var.account_id}:role/${var.role_name}"
+  - service: IAM
+    api: ListRoles
+    actions:
+      - iam:ListRoles
+    resource_arns:
+      - "*"
+
+  # CloudFormation
+  - service: CloudFormation
+    api: CreateStack
+    actions:
+      - cloudformation:CreateStack
+    resource_arns:
+      - "arn:aws:cloudformation:${var.region}:${var.account_id}:stack/${var.stack_name}/*"
+    dependent_actions:
+      - iam:PassRole
+  - service: CloudFormation
+    api: UpdateStack
+    actions:
+      - cloudformation:UpdateStack
+    resource_arns:
+      - "arn:aws:cloudformation:${var.region}:${var.account_id}:stack/${var.stack_name}/*"
+    dependent_actions:
+      - iam:PassRole
+  - service: CloudFormation
+    api: DescribeStacks
+    actions:
+      - cloudformation:DescribeStacks
+    resource_arns:
+      - "arn:aws:cloudformation:${var.region}:${var.account_id}:stack/${var.stack_name}/*"
+  - service: CloudFormation
+    api: DescribeStackEvents
+    actions:
+      - cloudformation:DescribeStackEvents
+    resource_arns:
+      - "arn:aws:cloudformation:${var.region}:${var.account_id}:stack/${var.stack_name}/*"
+  - service: CloudFormation
+    api: DeleteStack
+    actions:
+      - cloudformation:DeleteStack
+    resource_arns:
+      - "arn:aws:cloudformation:${var.region}:${var.account_id}:stack/${var.stack_name}/*"
