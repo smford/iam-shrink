@@ -12,18 +12,22 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/smford/iam-shrink/internal/advisor"
+	"github.com/smford/iam-shrink/internal/cloudtrail"
 	"github.com/smford/iam-shrink/internal/csm"
 	"github.com/smford/iam-shrink/internal/diff"
+	"github.com/smford/iam-shrink/internal/k8s"
 	"github.com/smford/iam-shrink/internal/linter"
 	"github.com/smford/iam-shrink/internal/mapper"
 	"github.com/smford/iam-shrink/internal/proxy"
 	"github.com/smford/iam-shrink/internal/render"
 	"github.com/smford/iam-shrink/internal/runner"
 	"github.com/smford/iam-shrink/internal/session"
+	"github.com/smford/iam-shrink/internal/vscode"
 )
 
 var (
-	version = "0.2.0"
+	version = "0.3.0"
 )
 
 func printUsage() {
@@ -31,30 +35,44 @@ func printUsage() {
 
 Usage:
   iam-shrink run [flags] -- <command> [args...]
-  iam-shrink explain <service>:<api>
-  iam-shrink export-mappings [flags]
+  iam-shrink ingest [flags] <cloudtrail-file-or-dir>
+  iam-shrink patch --file=<main.tf> [flags] -- <command> [args...]
+  iam-shrink prune-role <role-policy.json> [flags]
   iam-shrink diff <existing-policy.json> [captured-policy.json]
   iam-shrink lint <policy.json>
+  iam-shrink explain <service>:<api>
+  iam-shrink export-mappings [flags]
+  iam-shrink k8s manifest [flags]
+  iam-shrink init-vscode [flags]
   iam-shrink session <start|status|dump|stop> [flags]
   iam-shrink version
 
 Commands:
   run              Run a command with AWS CSM telemetry and generate an IAM policy
-  explain          Show IAM mapping, required ARNs, and dependencies for an SDK API
-  export-mappings  Dump the embedded SDK-to-IAM mapping database to YAML
+  ingest           Process AWS CloudTrail logs (.json, .json.gz) and synthesize a policy
+  patch            Execute a command and update a Terraform .tf file in-place
+  prune-role       Prune unaccessed permissions from an existing IAM role policy
   diff             Compare an existing IAM policy against captured runtime permissions
   lint             Analyze an IAM policy for security risks and privilege escalation
+  explain          Show IAM mapping, required ARNs, and dependencies for an SDK API
+  export-mappings  Dump the embedded SDK-to-IAM mapping database to YAML
+  k8s              Generate Kubernetes IRSA and pod telemetry manifests
+  init-vscode      Generate .vscode/tasks.json configuring iam-shrink for test suites
   session          Manage a standalone background daemon session
   version          Show version information
 
 Flags for 'run':
   --format string           Output format: json, tf, cdk, pulumi, cfn (default "json")
+  --policy-type string      Policy type: identity, boundary, scp, resource (default "identity")
   --out string              Output file path (default: stdout)
+  --patch-file string       Path to Terraform .tf file to patch in-place
   --include-failed          Include failed API calls (e.g. 403 AccessDenied) (default true)
   --group-by-service        Group IAM statements by AWS service prefix (default true)
   --split-by-access-level   Split statements by access level (Read/Write/List/Tagging/Permissions) (default false)
   --strict-arns             Generate parameterized ARN placeholders instead of '*' (default false)
   --emit-vars               Emit companion Terraform variable definitions (with --format=tf) (default false)
+  --conditions              Synthesize AWS condition blocks (e.g. aws:RequestedRegion) (default false)
+  --principal string        Principal ARN for resource-based policies (default: account root)
   --proxy                   Enable local HTTP/HTTPS interception proxy for exact resource extraction (default false)
   --lint                    Run security linter checks on generated policy (default false)
   --diff-against string     Compare generated policy against an existing policy JSON file
@@ -62,14 +80,12 @@ Flags for 'run':
 
 Examples:
   iam-shrink run --format=tf --strict-arns --emit-vars -- go test ./...
-  iam-shrink run --format=pulumi -- npm test
-  iam-shrink run --format=cfn --out=policy.json -- python deploy_dryrun.py
-  iam-shrink run --diff-against=existing_role.json -- go test ./...
-  iam-shrink explain s3:ListObjectsV2
-  iam-shrink lint my_policy.json
-  iam-shrink session start
-  iam-shrink session dump --format=tf
-  iam-shrink session stop
+  iam-shrink run --policy-type=scp --format=json -- python test_suite.py
+  iam-shrink run --patch-file=main.tf -- go test ./...
+  iam-shrink ingest --format=tf /path/to/cloudtrail/logs/
+  iam-shrink prune-role existing_role.json --active-actions="s3:GetObject,dynamodb:PutItem"
+  iam-shrink k8s manifest --deployment=api-service > k8s-telemetry.yaml
+  iam-shrink init-vscode
 `)
 }
 
@@ -84,14 +100,24 @@ func main() {
 	switch subcommand {
 	case "run":
 		handleRun(os.Args[2:])
-	case "explain":
-		handleExplain(os.Args[2:])
-	case "export-mappings":
-		handleExportMappings(os.Args[2:])
+	case "ingest":
+		handleIngest(os.Args[2:])
+	case "patch":
+		handlePatch(os.Args[2:])
+	case "prune-role":
+		handlePruneRole(os.Args[2:])
 	case "diff":
 		handleDiff(os.Args[2:])
 	case "lint":
 		handleLint(os.Args[2:])
+	case "explain":
+		handleExplain(os.Args[2:])
+	case "export-mappings":
+		handleExportMappings(os.Args[2:])
+	case "k8s":
+		handleK8s(os.Args[2:])
+	case "init-vscode":
+		handleInitVSCode(os.Args[2:])
 	case "session":
 		handleSession(os.Args[2:])
 	case "version", "--version", "-v":
@@ -112,26 +138,36 @@ func handleRun(args []string) {
 	fs.SetOutput(os.Stderr)
 
 	var (
-		formatStr          string
-		outFile            string
-		includeFailed      bool
-		groupByService     bool
-		splitByAccessLevel bool
-		strictARNs         bool
-		emitVars           bool
-		enableProxy        bool
-		lintPolicy         bool
-		diffAgainst        string
-		mappingsPath       string
+		formatStr            string
+		policyTypeStr        string
+		outFile              string
+		patchFile            string
+		patchTarget          string
+		includeFailed        bool
+		groupByService       bool
+		splitByAccessLevel   bool
+		strictARNs           bool
+		emitVars             bool
+		synthesizeConditions bool
+		principalARN         string
+		enableProxy          bool
+		lintPolicy           bool
+		diffAgainst          string
+		mappingsPath         string
 	)
 
 	fs.StringVar(&formatStr, "format", "json", "Output format: json, tf, cdk, pulumi, cfn")
+	fs.StringVar(&policyTypeStr, "policy-type", "identity", "Policy type: identity, boundary, scp, resource")
 	fs.StringVar(&outFile, "out", "", "Output file path (default: stdout)")
+	fs.StringVar(&patchFile, "patch-file", "", "Path to Terraform .tf file to patch in-place")
+	fs.StringVar(&patchTarget, "patch-target", "", "Target block name to patch (default: first match)")
 	fs.BoolVar(&includeFailed, "include-failed", true, "Include failed API calls (e.g. 403 AccessDenied)")
 	fs.BoolVar(&groupByService, "group-by-service", true, "Group statements by AWS service prefix")
 	fs.BoolVar(&splitByAccessLevel, "split-by-access-level", false, "Split statements by access level")
 	fs.BoolVar(&strictARNs, "strict-arns", false, "Generate parameterized ARN placeholders instead of '*'")
 	fs.BoolVar(&emitVars, "emit-vars", false, "Emit companion Terraform variables (with --format=tf)")
+	fs.BoolVar(&synthesizeConditions, "conditions", false, "Synthesize AWS condition blocks")
+	fs.StringVar(&principalARN, "principal", "", "Principal ARN for resource-based policies")
 	fs.BoolVar(&enableProxy, "proxy", false, "Enable HTTP/HTTPS proxy for exact resource extraction")
 	fs.BoolVar(&lintPolicy, "lint", false, "Analyze generated policy for security risks")
 	fs.StringVar(&diffAgainst, "diff-against", "", "Path to existing policy JSON to compare against")
@@ -172,31 +208,31 @@ func handleRun(args []string) {
 	}
 
 	format := render.FormatType(strings.ToLower(strings.TrimSpace(formatStr)))
-	switch format {
-	case render.FormatJSON, render.FormatTF, render.FormatCDK, render.FormatPulumi, render.FormatCFN:
-	default:
-		fmt.Fprintf(os.Stderr, "Error: unsupported format %q (allowed: json, tf, cdk, pulumi, cfn)\n", formatStr)
-		os.Exit(1)
-	}
+	policyType := render.PolicyType(strings.ToLower(strings.TrimSpace(policyTypeStr)))
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
 	opts := runner.Options{
-		Command:            cmdArgs,
-		Format:             format,
-		OutputFile:         outFile,
-		IncludeFailed:      includeFailed,
-		GroupByService:     groupByService,
-		SplitByAccessLevel: splitByAccessLevel,
-		StrictARNs:         strictARNs,
-		EmitVars:           emitVars,
-		EnableProxy:        enableProxy,
-		DiffAgainst:        diffAgainst,
-		LintPolicy:         lintPolicy,
-		CustomMappings:     mappingsPath,
-		Stdout:             os.Stdout,
-		Stderr:             os.Stderr,
+		Command:              cmdArgs,
+		Format:               format,
+		PolicyType:           policyType,
+		OutputFile:           outFile,
+		PatchFile:            patchFile,
+		PatchTarget:          patchTarget,
+		IncludeFailed:        includeFailed,
+		GroupByService:       groupByService,
+		SplitByAccessLevel:   splitByAccessLevel,
+		StrictARNs:           strictARNs,
+		EmitVars:             emitVars,
+		SynthesizeConditions: synthesizeConditions,
+		PrincipalARN:         principalARN,
+		EnableProxy:          enableProxy,
+		DiffAgainst:          diffAgainst,
+		LintPolicy:           lintPolicy,
+		CustomMappings:       mappingsPath,
+		Stdout:               os.Stdout,
+		Stderr:               os.Stderr,
 	}
 
 	res, err := runner.Run(ctx, opts)
@@ -208,6 +244,270 @@ func handleRun(args []string) {
 	if res.ExitCode != 0 {
 		os.Exit(res.ExitCode)
 	}
+}
+
+func parseFlagsAndPosArgs(fs *flag.FlagSet, args []string) ([]string, error) {
+	var flagArgs []string
+	var posArgs []string
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		if strings.HasPrefix(a, "-") {
+			flagArgs = append(flagArgs, a)
+			// Check if flag takes a separate value argument
+			if !strings.Contains(a, "=") && i+1 < len(args) && !strings.HasPrefix(args[i+1], "-") {
+				// Peek if flag is known boolean
+				f := fs.Lookup(strings.TrimLeft(a, "-"))
+				if f != nil {
+					// Check if boolean flag
+					if bf, ok := f.Value.(interface{ IsBoolFlag() bool }); !ok || !bf.IsBoolFlag() {
+						flagArgs = append(flagArgs, args[i+1])
+						i++
+					}
+				} else {
+					// Unknown or custom, pass value
+					flagArgs = append(flagArgs, args[i+1])
+					i++
+				}
+			}
+		} else {
+			posArgs = append(posArgs, a)
+		}
+	}
+	if err := fs.Parse(flagArgs); err != nil {
+		return nil, err
+	}
+	return posArgs, nil
+}
+
+func handleIngest(args []string) {
+	fs := flag.NewFlagSet("ingest", flag.ContinueOnError)
+	formatStr := fs.String("format", "json", "Output format: json, tf, cdk, pulumi, cfn")
+	policyTypeStr := fs.String("policy-type", "identity", "Policy type: identity, boundary, scp, resource")
+	outFile := fs.String("out", "", "Output file path (default: stdout)")
+	strictARNs := fs.Bool("strict-arns", true, "Use strict ARNs")
+	groupByService := fs.Bool("group-by-service", true, "Group statements by service")
+	splitByAccess := fs.Bool("split-by-access-level", false, "Split by access level")
+	includeFailed := fs.Bool("include-failed", true, "Include failed events")
+
+	paths, err := parseFlagsAndPosArgs(fs, args)
+	if err != nil {
+		os.Exit(1)
+	}
+
+	if len(paths) == 0 {
+		fmt.Fprintf(os.Stderr, "Usage: iam-shrink ingest [flags] <cloudtrail-file-or-dir>\n")
+		os.Exit(1)
+	}
+
+	targetPath := paths[0]
+	events, err := cloudtrail.ParsePath(targetPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error reading CloudTrail logs %s: %v\n", targetPath, err)
+		os.Exit(1)
+	}
+
+	m, err := mapper.New()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error initializing mapper: %v\n", err)
+		os.Exit(1)
+	}
+
+	var actionItems []render.ActionItem
+	seen := make(map[string]bool)
+
+	for _, item := range events {
+		if !*includeFailed && item.Event.IsFailed() {
+			continue
+		}
+		callKey := fmt.Sprintf("%s:%s", item.Event.Service, item.Event.Api)
+		if seen[callKey] {
+			continue
+		}
+		seen[callKey] = true
+
+		res := m.Resolve(item.Event.Service, item.Event.Api)
+		rARNs := res.ResourceARNs
+		if len(item.ResourceARNs) > 0 {
+			rARNs = item.ResourceARNs
+		}
+
+		for _, act := range res.Actions {
+			actionItems = append(actionItems, render.ActionItem{
+				Action:       act,
+				Service:      res.ServicePrefix,
+				ResourceARNs: rARNs,
+				AccessLevel:  res.AccessLevel,
+				IsFallback:   res.IsFallback,
+			})
+		}
+	}
+
+	renderOpts := render.RenderOptions{
+		Format:             render.FormatType(*formatStr),
+		PolicyType:         render.PolicyType(*policyTypeStr),
+		GroupByService:     *groupByService,
+		SplitByAccessLevel: *splitByAccess,
+		StrictARNs:         *strictARNs,
+	}
+
+	rendered, err := render.Render(actionItems, renderOpts)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Rendering error: %v\n", err)
+		os.Exit(1)
+	}
+
+	if *outFile != "" {
+		if err := os.WriteFile(*outFile, []byte(rendered), 0644); err != nil {
+			fmt.Fprintf(os.Stderr, "Writing to %s: %v\n", *outFile, err)
+			os.Exit(1)
+		}
+	} else {
+		fmt.Print(rendered)
+	}
+}
+
+func handlePatch(args []string) {
+	fs := flag.NewFlagSet("patch", flag.ContinueOnError)
+	filePath := fs.String("file", "", "Path to .tf file to patch")
+	targetName := fs.String("target", "", "Target data source name (default: first match)")
+
+	if err := fs.Parse(args); err != nil {
+		os.Exit(1)
+	}
+
+	if *filePath == "" {
+		fmt.Fprintf(os.Stderr, "Error: --file is required for patch command\n")
+		os.Exit(1)
+	}
+
+	cmdArgs := fs.Args()
+	if len(cmdArgs) > 0 && cmdArgs[0] == "--" {
+		cmdArgs = cmdArgs[1:]
+	}
+
+	if len(cmdArgs) == 0 {
+		fmt.Fprintf(os.Stderr, "Usage: iam-shrink patch --file=main.tf [flags] -- <command> [args...]\n")
+		os.Exit(1)
+	}
+
+	opts := runner.Options{
+		Command:        cmdArgs,
+		Format:         render.FormatTF,
+		PatchFile:      *filePath,
+		PatchTarget:    *targetName,
+		IncludeFailed:  true,
+		GroupByService: true,
+		StrictARNs:     true,
+		Stdout:         os.Stdout,
+		Stderr:         os.Stderr,
+	}
+
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer cancel()
+
+	_, err := runner.Run(ctx, opts)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Patch run error: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+func handlePruneRole(args []string) {
+	fs := flag.NewFlagSet("prune-role", flag.ContinueOnError)
+	activeActionsFlag := fs.String("active-actions", "", "Comma-separated list of active actions (e.g. s3:GetObject,dynamodb:PutItem)")
+	outFile := fs.String("out", "", "Output file for pruned policy (default: stdout)")
+
+	files, err := parseFlagsAndPosArgs(fs, args)
+	if err != nil {
+		os.Exit(1)
+	}
+
+	if len(files) == 0 {
+		fmt.Fprintf(os.Stderr, "Usage: iam-shrink prune-role [flags] <role-policy.json> --active-actions=\"s3:GetObject,...\"\n")
+		os.Exit(1)
+	}
+
+	policyPath := files[0]
+	policyData, err := os.ReadFile(policyPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Reading role policy %s: %v\n", policyPath, err)
+		os.Exit(1)
+	}
+
+	var active []string
+	if *activeActionsFlag != "" {
+		for _, a := range strings.Split(*activeActionsFlag, ",") {
+			trimmed := strings.TrimSpace(a)
+			if trimmed != "" {
+				active = append(active, trimmed)
+			}
+		}
+	}
+
+	res, err := advisor.PrunePolicy(policyData, active)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Prune error: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Fprintf(os.Stderr, "Pruning complete: Removed %d actions (%.1f%% attack surface reduction).\n\n", len(res.PrunedActions), res.ReductionPct)
+
+	if *outFile != "" {
+		if err := os.WriteFile(*outFile, res.PrunedPolicyDoc, 0644); err != nil {
+			fmt.Fprintf(os.Stderr, "Writing to %s: %v\n", *outFile, err)
+			os.Exit(1)
+		}
+	} else {
+		_, _ = os.Stdout.Write(res.PrunedPolicyDoc)
+	}
+}
+
+func handleK8s(args []string) {
+	if len(args) < 1 || args[0] != "manifest" {
+		fmt.Fprintf(os.Stderr, "Usage: iam-shrink k8s manifest [flags]\n")
+		os.Exit(1)
+	}
+
+	fs := flag.NewFlagSet("k8s manifest", flag.ContinueOnError)
+	deployName := fs.String("deployment", "my-app", "Deployment name")
+	ns := fs.String("namespace", "default", "Kubernetes namespace")
+	csmPort := fs.Int("csm-port", 31000, "CSM UDP port")
+	proxyPort := fs.Int("proxy-port", 31001, "Proxy TCP port")
+	enableProxy := fs.Bool("proxy", false, "Include proxy configuration")
+	image := fs.String("image", "ghcr.io/smford/iam-shrink:latest", "iam-shrink container image")
+
+	_ = fs.Parse(args[1:])
+
+	opts := k8s.ManifestOptions{
+		DeploymentName: *deployName,
+		Namespace:      *ns,
+		CSMPort:        *csmPort,
+		ProxyPort:      *proxyPort,
+		EnableProxy:    *enableProxy,
+		Image:          *image,
+	}
+
+	fmt.Print(k8s.GeneratePodSidecarYAML(opts))
+}
+
+func handleInitVSCode(args []string) {
+	fs := flag.NewFlagSet("init-vscode", flag.ContinueOnError)
+	testCmd := fs.String("test-cmd", "go test ./...", "Test command to configure in VS Code tasks")
+
+	_ = fs.Parse(args)
+
+	cwd, err := os.Getwd()
+	if err != nil {
+		cwd = "."
+	}
+
+	taskPath, err := vscode.WriteTasksFile(cwd, *testCmd)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error writing tasks.json: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("Created %s successfully!\nRun tasks via Cmd+Shift+P (or Ctrl+Shift+P) -> 'Tasks: Run Task' -> 'iam-shrink'.\n", taskPath)
 }
 
 func handleExplain(args []string) {
@@ -324,7 +624,6 @@ func handleDiff(args []string) {
 			os.Exit(1)
 		}
 	} else {
-		// Read captured policy from stdin
 		stdinData, err := io.ReadAll(os.Stdin)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error reading stdin: %v\n", err)
@@ -449,7 +748,6 @@ func handleSessionStart(mgr *session.Manager, args []string) {
 	fmt.Println("\nTo inspect captured policy: iam-shrink session dump")
 	fmt.Println("To end session:            iam-shrink session stop")
 
-	// Run event recorder loop until SIGTERM/SIGINT
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
 

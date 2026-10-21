@@ -17,26 +17,32 @@ import (
 	"github.com/smford/iam-shrink/internal/diff"
 	"github.com/smford/iam-shrink/internal/linter"
 	"github.com/smford/iam-shrink/internal/mapper"
+	"github.com/smford/iam-shrink/internal/patcher"
 	"github.com/smford/iam-shrink/internal/proxy"
 	"github.com/smford/iam-shrink/internal/render"
 )
 
 // Options configures the execution of a child command and policy generation.
 type Options struct {
-	Command            []string
-	Format             render.FormatType
-	OutputFile         string
-	IncludeFailed      bool
-	GroupByService     bool
-	SplitByAccessLevel bool
-	StrictARNs         bool
-	EmitVars           bool
-	EnableProxy        bool
-	DiffAgainst        string
-	LintPolicy         bool
-	CustomMappings     string // Path to optional YAML overrides
-	Stdout             io.Writer
-	Stderr             io.Writer
+	Command              []string
+	Format               render.FormatType
+	PolicyType           render.PolicyType
+	OutputFile           string
+	PatchFile            string
+	PatchTarget          string
+	IncludeFailed        bool
+	GroupByService       bool
+	SplitByAccessLevel   bool
+	StrictARNs           bool
+	EmitVars             bool
+	SynthesizeConditions bool
+	PrincipalARN         string
+	EnableProxy          bool
+	DiffAgainst          string
+	LintPolicy           bool
+	CustomMappings       string // Path to optional YAML overrides
+	Stdout               io.Writer
+	Stderr               io.Writer
 }
 
 // Result holds the generated policy and child exit code.
@@ -206,16 +212,39 @@ func Run(ctx context.Context, opts Options) (*Result, error) {
 
 	// 8. Render policy
 	renderOpts := render.RenderOptions{
-		Format:             opts.Format,
-		GroupByService:     opts.GroupByService,
-		SplitByAccessLevel: opts.SplitByAccessLevel,
-		StrictARNs:         opts.StrictARNs,
-		EmitVars:           opts.EmitVars,
+		Format:               opts.Format,
+		PolicyType:           opts.PolicyType,
+		GroupByService:       opts.GroupByService,
+		SplitByAccessLevel:   opts.SplitByAccessLevel,
+		StrictARNs:           opts.StrictARNs,
+		EmitVars:             opts.EmitVars,
+		SynthesizeConditions: opts.SynthesizeConditions,
+		PrincipalARN:         opts.PrincipalARN,
 	}
 
 	renderedPolicy, err := render.Render(actionItems, renderOpts)
 	if err != nil {
 		return nil, fmt.Errorf("rendering policy: %w", err)
+	}
+
+	// Optional Terraform in-place patching
+	if opts.PatchFile != "" {
+		patchHCL := renderedPolicy
+		if opts.Format != render.FormatTF {
+			// Generate TF format specifically for patching
+			patchOpts := renderOpts
+			patchOpts.Format = render.FormatTF
+			patchHCL, _ = render.Render(actionItems, patchOpts)
+		}
+		if err := patcher.PatchTerraformFile(patcher.PatchOptions{
+			FilePath:     opts.PatchFile,
+			TargetName:   opts.PatchTarget,
+			NewHCL:       patchHCL,
+			CreateBackup: true,
+		}); err != nil {
+			return nil, fmt.Errorf("patching terraform file %s: %w", opts.PatchFile, err)
+		}
+		_, _ = fmt.Fprintf(stderrWriter, "Successfully patched %s (backup created at %s.bak)\n", opts.PatchFile, opts.PatchFile)
 	}
 
 	// Optional Linter

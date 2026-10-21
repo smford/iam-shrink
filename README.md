@@ -2,7 +2,7 @@
 
 **Local-to-Least-Privilege AWS IAM Policy Generator**
 
-`iam-shrink` is a single-binary, zero-CGO CLI tool that intercepts AWS SDK and AWS CLI operations during local test suites, scripts, or deployment dry runs via AWS Client-Side Monitoring (CSM) and local HTTP/HTTPS proxying, translating captured API calls into exact, least-privilege IAM policies formatted in **Terraform HCL**, **AWS CDK (TypeScript)**, **Pulumi (TypeScript)**, **CloudFormation**, or **IAM Policy JSON**.
+`iam-shrink` is a single-binary, zero-CGO CLI tool that intercepts AWS SDK and AWS CLI operations during local test suites, scripts, or deployment dry runs via AWS Client-Side Monitoring (CSM), local HTTP/HTTPS proxying, or CloudTrail log analysis. It translates captured API calls into exact, least-privilege IAM policies formatted in **Terraform HCL**, **AWS CDK (TypeScript)**, **Pulumi (TypeScript)**, **CloudFormation**, or **IAM Policy JSON**.
 
 ---
 
@@ -10,18 +10,32 @@
 
 * **Zero-CGO & Single Binary:** Compiles with `CGO_ENABLED=0` across Linux, macOS, and Windows.
 * **Dual Interception Engine:**
-  * **AWS CSM (Client-Side Monitoring):** Built-in UDP listener (`127.0.0.1`) capturing SDK execution with trailing packet drain.
+  * **AWS CSM (Client-Side Monitoring):** Lightweight UDP listener (`127.0.0.1`) capturing SDK execution with trailing packet drain.
   * **HTTP/HTTPS Interception Proxy (`--proxy`):** Generates an ephemeral Root CA to inspect requests on-the-fly and extract exact runtime ARNs (e.g. S3 bucket/keys, DynamoDB tables, KMS keys) instead of placeholders.
+* **Multi-Source Ingestion:**
+  * **Local Test Suite / CLI Execution:** `iam-shrink run -- <command>`
+  * **AWS CloudTrail Ingestion:** `iam-shrink ingest <file-or-dir>` processes `.json` and `.json.gz` logs.
+* **Policy Boundaries & Perimeter Synthesis:**
+  * **Identity-based Policies:** Standard IAM roles and user policies.
+  * **Service Control Policies (SCPs) (`--policy-type=scp`):** AWS Organizations account guardrails.
+  * **Permissions Boundaries (`--policy-type=boundary`):** Delegation caps.
+  * **Resource-based Policies (`--policy-type=resource`):** S3 Bucket Policies and KMS Key Policies with principal assignment.
+  * **Condition Synthesis (`--conditions`):** Synthesizes `aws:RequestedRegion` condition blocks.
 * **Multi-Format Synthesis:**
   * **Terraform HCL:** `data "aws_iam_policy_document"` with optional companion variable blocks (`--emit-vars`).
+  * **In-Place Terraform Patching (`iam-shrink patch`):** Directly updates existing `.tf` files with automatic backup creation.
   * **AWS CDK:** TypeScript `new iam.PolicyStatement({ ... })`.
   * **Pulumi:** TypeScript `aws.iam.getPolicyDocumentOutput({ ... })`.
   * **CloudFormation:** YAML/JSON `AWS::IAM::ManagedPolicy`.
   * **IAM Policy JSON:** Canonical AWS IAM policy format.
 * **Separation of Duties (`--split-by-access-level`):** Segregates statements by access level (`Read`, `Write`, `List`, `Tagging`, `Permissions`).
-* **Policy Diffing & Shrinking (`iam-shrink diff`):** Compares live or existing IAM policies against runtime traffic, pinpointing unused permissions to prune and calculating overall attack surface reduction.
+* **Policy Diffing & Role Pruning:**
+  * `iam-shrink diff`: Compares existing policies against runtime execution and calculates attack surface reduction.
+  * `iam-shrink prune-role`: Prunes unaccessed permissions from an existing IAM role policy.
 * **Security Linter (`iam-shrink lint`):** Analyzes IAM policies for privilege escalation risks (e.g. unconstrained `iam:PassRole`, `iam:CreatePolicyVersion`, wildcards).
-* **Daemon / Session Mode (`iam-shrink session`):** Long-running background sessions for Docker Compose, integration clusters, or local dev servers.
+* **Kubernetes IRSA Manifest Generator (`iam-shrink k8s`):** Generates sidecar and environment specs for EKS pods.
+* **VS Code Integration (`iam-shrink init-vscode`):** Generates `.vscode/tasks.json` for one-click test runs.
+* **Daemon / Session Mode (`iam-shrink session`):** Long-running background sessions for Docker Compose or dev servers.
 
 ---
 
@@ -50,15 +64,17 @@
 | iam-shrink Ingestion Engine                                          |
 | - UDP CSM Collector: ApiCall & ApiCallAttempt events                 |
 | - MITM Proxy: Extracts exact bucket, table, key, queue ARNs          |
+| - CloudTrail Log Reader: Ingests raw historical records              |
 | - Trailing packet drain (200ms post-exit)                            |
 +----------------------------------------------------------------------+
                                    |
                                    v
 +----------------------------------------------------------------------+
-| Translation & ARN Synthesizer Engine                                 |
+| Translation & Policy Synthesizer Engine                              |
 | - Maps SDK (Service, Api) -> Canonical IAM Actions                   |
 | - Classifies Access Levels (Read/Write/List/Tagging/Permissions)     |
-| - Resolves AWS edge cases (s3:ListObjectsV2 -> s3:ListBucket)        |
+| - Policy Perimeters (Identity, Boundary, SCP, Resource Policies)     |
+| - Condition Key Synthesis (aws:RequestedRegion)                      |
 | - Deterministic alphabetical sorting & deduplication                 |
 +----------------------------------------------------------------------+
                                    |
@@ -95,17 +111,22 @@ go install github.com/smford/iam-shrink/cmd/iam-shrink@latest
 ```text
 Usage:
   iam-shrink run [flags] -- <command> [args...]
-  iam-shrink explain <service>:<api>
-  iam-shrink export-mappings [flags]
+  iam-shrink ingest [flags] <cloudtrail-file-or-dir>
+  iam-shrink patch --file=<main.tf> [flags] -- <command> [args...]
+  iam-shrink prune-role <role-policy.json> [flags]
   iam-shrink diff <existing-policy.json> [captured-policy.json]
   iam-shrink lint <policy.json>
+  iam-shrink explain <service>:<api>
+  iam-shrink export-mappings [flags]
+  iam-shrink k8s manifest [flags]
+  iam-shrink init-vscode [flags]
   iam-shrink session <start|status|dump|stop> [flags]
   iam-shrink version
 ```
 
 ---
 
-### 1. Generating Policies (`iam-shrink run`)
+### 1. Generating Policies from Commands (`iam-shrink run`)
 
 Wrap any command after `--`:
 
@@ -115,6 +136,12 @@ iam-shrink run --format=tf -- go test ./...
 
 # Output Terraform with strict parameterized ARNs and companion variable definitions
 iam-shrink run --format=tf --strict-arns --emit-vars -- go test ./...
+
+# Generate an AWS Organizations Service Control Policy (SCP)
+iam-shrink run --policy-type=scp --format=json -- python test_suite.py
+
+# Generate a Resource-based Policy with condition keys
+iam-shrink run --policy-type=resource --principal="arn:aws:iam::123456789012:role/WorkerRole" --conditions --format=tf -- go test ./...
 
 # Output AWS CDK (TypeScript)
 iam-shrink run --format=cdk --out=policy.ts -- npm test
@@ -140,12 +167,16 @@ iam-shrink run --lint --diff-against=existing_role.json -- go test ./...
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--format` | `json` | Format: `json`, `tf`, `cdk`, `pulumi`, `cfn` |
+| `--policy-type` | `identity` | Type: `identity`, `boundary`, `scp`, `resource` |
 | `--out` | `""` | Output file path (if omitted, writes to stdout) |
+| `--patch-file` | `""` | Path to Terraform `.tf` file to patch directly in-place |
 | `--include-failed` | `true` | Include API calls that failed (e.g., 403 `AccessDenied`) |
 | `--group-by-service` | `true` | Group IAM statements by AWS service prefix |
 | `--split-by-access-level` | `false` | Group statements by access level (`Read`, `Write`, `List`, `Tagging`, `Permissions`) |
 | `--strict-arns` | `false` | Generate parameterized ARN placeholders instead of `*` |
-| `--emit-vars` | `false` | Emit companion Terraform variable definitions for ARNs (with `--format=tf`) |
+| `--emit-vars` | `false` | Emit companion Terraform variable definitions for ARNs |
+| `--conditions` | `false` | Synthesize condition blocks (e.g. `aws:RequestedRegion`) |
+| `--principal` | `""` | Principal ARN for resource-based policies |
 | `--proxy` | `false` | Enable local HTTP/HTTPS proxy to capture exact concrete ARNs |
 | `--lint` | `false` | Run automated security linter checks on generated statements |
 | `--diff-against` | `""` | Compare generated policy against an existing policy JSON file |
@@ -153,207 +184,101 @@ iam-shrink run --lint --diff-against=existing_role.json -- go test ./...
 
 ---
 
-### 2. Inspecting API Mappings (`iam-shrink explain`)
+### 2. CloudTrail Log Ingestion (`iam-shrink ingest`)
 
-Look up canonical IAM actions, access levels, required resource ARNs, and dependent permissions:
+Synthesize least-privilege policies directly from production CloudTrail logs (`.json` or `.json.gz` files, or an entire directory):
 
 ```bash
-iam-shrink explain s3:ListObjectsV2
-```
-Output:
-```text
-Service:            S3 (IAM Prefix: s3)
-SDK API:            ListObjectsV2
-IAM Actions:        s3:ListBucket
-Access Level:       List
-Resource ARNs:
-  - arn:aws:s3:::${var.bucket_name}
-Dependent Actions:  (none)
-Fallback:           false (canonical mapping)
-```
+# Ingest single CloudTrail file
+iam-shrink ingest --format=tf /var/log/cloudtrail/log.json.gz
 
-Look up dependent permissions (e.g. KMS decryption for Secrets Manager):
-```bash
-iam-shrink explain secretsmanager:GetSecretValue
-```
-Output:
-```text
-Service:            SecretsManager (IAM Prefix: secretsmanager)
-SDK API:            GetSecretValue
-IAM Actions:        secretsmanager:GetSecretValue
-Access Level:       Read
-Resource ARNs:
-  - arn:aws:secretsmanager:${var.region}:${var.account_id}:secret:${var.secret_name}
-Dependent Actions:  kms:Decrypt
-Fallback:           false (canonical mapping)
+# Ingest entire directory of CloudTrail logs
+iam-shrink ingest --format=tf --strict-arns /path/to/cloudtrail/logs/
 ```
 
 ---
 
-### 3. Policy Diffing & Shrinking (`iam-shrink diff`)
+### 3. In-Place Terraform Patching (`iam-shrink patch`)
 
-Compare an existing over-privileged policy against observed runtime traffic to find unused permissions that can be safely eliminated:
+Run your tests and automatically patch the target `data "aws_iam_policy_document"` block in an existing Terraform file, creating an automatic backup (`.tf.bak`):
+
+```bash
+iam-shrink patch --file=main.tf -- go test ./...
+```
+
+---
+
+### 4. Role Pruning (`iam-shrink prune-role`)
+
+Prune stale, unused actions from an over-privileged IAM role policy:
+
+```bash
+iam-shrink prune-role existing_role.json --active-actions="s3:GetObject,dynamodb:PutItem" --out=pruned_role.json
+```
+
+---
+
+### 5. Policy Diffing & Shrinking (`iam-shrink diff`)
+
+Compare an existing policy against runtime permissions to calculate attack surface reduction:
 
 ```bash
 iam-shrink diff existing_role.json captured_policy.json
 ```
-Output:
-```text
-============================================================
-                  IAM Policy Diff & Shrink Report           
-============================================================
-
-Existing Policy Actions: 18
-Captured Runtime Actions: 4
-Retained (Used) Actions:  4
-Unused (Prunable) Actions:14
-Missing (Needed) Actions: 0
-Privilege Attack Surface Reduction: 77.8%
-
---- UNUSED PERMISSIONS (Recommended to Prune) ---
-  - dynamodb:DeleteTable
-  - dynamodb:Scan
-  - s3:DeleteBucket
-  - s3:PutBucketPolicy
-  - sqs:*
-  ...
-```
 
 ---
 
-### 4. Policy Linter & Risk Analyzer (`iam-shrink lint`)
+### 6. Security Linter (`iam-shrink lint`)
 
 Detect privilege escalation paths and wildcard vulnerabilities:
 
 ```bash
 iam-shrink lint policy.json
 ```
-Output:
-```text
-============================================================
-          IAM Security Linter Report (2 issues found)      
-============================================================
 
-[HIGH] #1: PRIV_ESC_PASS_ROLE (iam:PassRole)
-  Resource:       *
-  Description:    iam:PassRole granted on wildcard resource '*'. Allows passing any privileged role to a compute resource.
-  Recommendation: Constrain Resource to the specific role ARN(s) needed.
+---
 
-[MEDIUM] #2: SERVICE_WILDCARD_ACTION (s3:*)
-  Resource:       *
-  Description:    Service-level wildcard 's3:*' grants all current and future APIs of this service.
-  Recommendation: Scope down permissions to individual APIs invoked by the application.
+### 7. Kubernetes IRSA Deployment Spec (`iam-shrink k8s`)
+
+Generate a Kubernetes Deployment YAML containing an `iam-shrink` telemetry sidecar and IRSA environment variables:
+
+```bash
+iam-shrink k8s manifest --deployment=auth-service --proxy > k8s-telemetry.yaml
 ```
 
 ---
 
-### 5. Daemon / Session Mode (`iam-shrink session`)
+### 8. VS Code Companion Setup (`iam-shrink init-vscode`)
 
-Ideal for long-running processes, Docker Compose environments, or multi-step execution:
+Initialize `.vscode/tasks.json` in the current repository to run tests through `iam-shrink` with a keyboard shortcut:
+
+```bash
+iam-shrink init-vscode --test-cmd="go test ./..."
+```
+
+---
+
+### 9. Daemon / Session Mode (`iam-shrink session`)
+
+Ideal for Docker Compose environments or multi-step execution:
 
 ```bash
 # 1. Start background session
 iam-shrink session start
 
-# 2. Configure your terminal session (or container env)
+# 2. Configure terminal session
 export AWS_CSM_ENABLED=true
-export AWS_CSM_PORT=34567
+export AWS_CSM_PORT=31000
 export AWS_CSM_HOST=127.0.0.1
 
-# 3. Run your tests or development server
-docker compose up -d
-pytest tests/integration/
+# 3. Run development tests
+pytest tests/
 
-# 4. Check session status
-iam-shrink session status
-
-# 5. Dump the synthesized policy anytime
+# 4. Dump synthesized policy
 iam-shrink session dump --format=tf
 
-# 6. Terminate session
+# 5. Stop session
 iam-shrink session stop
-```
-
----
-
-### 6. Custom Mappings & Overrides (`iam-shrink export-mappings`)
-
-Export the default database:
-```bash
-iam-shrink export-mappings > custom_mappings.yaml
-```
-
-Override or extend actions in YAML:
-```yaml
-version: 1
-mappings:
-  - service: S3
-    api: ListObjectsV2
-    actions:
-      - s3:ListBucket
-    resource_arns:
-      - "arn:aws:s3:::my-special-bucket"
-```
-
-Apply override:
-```bash
-iam-shrink run --mappings=custom_mappings.yaml --format=tf -- go test ./...
-```
-
----
-
-## Output Examples
-
-### Pulumi TypeScript (`--format=pulumi`)
-```typescript
-import * as aws from "@pulumi/aws";
-
-export const generatedPolicy = aws.iam.getPolicyDocumentOutput({
-    statements: [
-        {
-            sid: "Dynamodb",
-            effect: "Allow",
-            actions: [
-                "dynamodb:PutItem",
-            ],
-            resources: [
-                "*",
-            ],
-        },
-        {
-            sid: "S3",
-            effect: "Allow",
-            actions: [
-                "s3:ListBucket",
-            ],
-            resources: [
-                "*",
-            ],
-        },
-    ],
-});
-```
-
-### Terraform HCL with Companion Variables (`--format=tf --strict-arns --emit-vars`)
-```hcl
-data "aws_iam_policy_document" "generated" {
-  statement {
-    sid    = "S3"
-    effect = "Allow"
-    actions = [
-      "s3:ListBucket",
-    ]
-    resources = [
-      "arn:aws:s3:::${var.bucket_name}",
-    ]
-  }
-}
-
-# Companion Terraform variable definitions:
-variable "bucket_name" {
-  type        = string
-  description = "Auto-extracted IAM ARN placeholder"
-}
 ```
 
 ---
