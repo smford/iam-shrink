@@ -35,17 +35,32 @@ type Statement struct {
 	Sid          string
 	Service      string
 	AccessLevel  string
+	Principal    string
 	Actions      []ActionItem
 	ResourceARNs []string
+	Conditions   map[string]map[string][]string
 }
+
+// PolicyType defines whether to generate identity policies, boundaries, SCPs, or resource policies.
+type PolicyType string
+
+const (
+	PolicyTypeIdentity PolicyType = "identity"
+	PolicyTypeBoundary PolicyType = "boundary"
+	PolicyTypeSCP      PolicyType = "scp"
+	PolicyTypeResource PolicyType = "resource"
+)
 
 // RenderOptions configures policy generation.
 type RenderOptions struct {
-	Format             FormatType
-	GroupByService     bool
-	SplitByAccessLevel bool
-	StrictARNs         bool
-	EmitVars           bool
+	Format               FormatType
+	PolicyType           PolicyType
+	GroupByService       bool
+	SplitByAccessLevel   bool
+	StrictARNs           bool
+	EmitVars             bool
+	SynthesizeConditions bool
+	PrincipalARN         string
 }
 
 // BuildStatements aggregates and deduplicates ActionItems according to options.
@@ -85,6 +100,8 @@ func BuildStatements(items []ActionItem, opts RenderOptions) []Statement {
 		return deduped[i].Action < deduped[j].Action
 	})
 
+	var statements []Statement
+
 	if !opts.GroupByService && !opts.SplitByAccessLevel {
 		var allActions []ActionItem
 		var allResources []string
@@ -100,7 +117,7 @@ func BuildStatements(items []ActionItem, opts RenderOptions) []Statement {
 			resources = uniqueSortedStrings(allResources)
 		}
 
-		return []Statement{
+		statements = []Statement{
 			{
 				Sid:          "AllowPolicyActions",
 				Service:      "All",
@@ -108,57 +125,79 @@ func BuildStatements(items []ActionItem, opts RenderOptions) []Statement {
 				ResourceARNs: resources,
 			},
 		}
-	}
-
-	// Grouping
-	groups := make(map[string][]ActionItem)
-	for _, it := range deduped {
-		var groupKey string
-		svc := serviceFromAction(it.Action)
-		access := it.AccessLevel
-		if access == "" {
-			access = "General"
-		}
-
-		if opts.GroupByService && opts.SplitByAccessLevel {
-			groupKey = sanitizeSid(svc) + sanitizeSid(access)
-		} else if opts.SplitByAccessLevel {
-			groupKey = sanitizeSid(access) + "Permissions"
-		} else {
-			groupKey = sanitizeSid(svc)
-		}
-
-		groups[groupKey] = append(groups[groupKey], it)
-	}
-
-	var groupKeys []string
-	for k := range groups {
-		groupKeys = append(groupKeys, k)
-	}
-	sort.Strings(groupKeys)
-
-	var statements []Statement
-	for _, k := range groupKeys {
-		actions := groups[k]
-		var resources []string
-		if opts.StrictARNs {
-			for _, act := range actions {
-				resources = append(resources, act.ResourceARNs...)
+	} else {
+		// Grouping
+		groups := make(map[string][]ActionItem)
+		for _, it := range deduped {
+			var groupKey string
+			svc := serviceFromAction(it.Action)
+			access := it.AccessLevel
+			if access == "" {
+				access = "General"
 			}
-			resources = uniqueSortedStrings(resources)
-		}
-		if len(resources) == 0 {
-			resources = []string{"*"}
+
+			if opts.GroupByService && opts.SplitByAccessLevel {
+				groupKey = sanitizeSid(svc) + sanitizeSid(access)
+			} else if opts.SplitByAccessLevel {
+				groupKey = sanitizeSid(access) + "Permissions"
+			} else {
+				groupKey = sanitizeSid(svc)
+			}
+
+			groups[groupKey] = append(groups[groupKey], it)
 		}
 
-		statements = append(statements, Statement{
-			Sid:          k,
-			Actions:      actions,
-			ResourceARNs: resources,
-		})
+		var groupKeys []string
+		for k := range groups {
+			groupKeys = append(groupKeys, k)
+		}
+		sort.Strings(groupKeys)
+
+		for _, k := range groupKeys {
+			actions := groups[k]
+			var resources []string
+			if opts.StrictARNs {
+				for _, act := range actions {
+					resources = append(resources, act.ResourceARNs...)
+				}
+				resources = uniqueSortedStrings(resources)
+			}
+			if len(resources) == 0 {
+				resources = []string{"*"}
+			}
+
+			statements = append(statements, Statement{
+				Sid:          k,
+				Actions:      actions,
+				ResourceARNs: resources,
+			})
+		}
 	}
 
-	return statements
+	var finalStatements []Statement
+	for _, s := range statements {
+		stmt := s
+		if opts.PolicyType == PolicyTypeSCP {
+			stmt.ResourceARNs = []string{"*"}
+		}
+		if opts.PolicyType == PolicyTypeResource {
+			if opts.PrincipalARN != "" {
+				stmt.Principal = opts.PrincipalARN
+			} else {
+				stmt.Principal = "arn:aws:iam::${var.account_id}:root"
+			}
+		}
+		if opts.SynthesizeConditions {
+			stmt.Conditions = map[string]map[string][]string{
+				"StringEquals": {
+					"aws:RequestedRegion": []string{"${var.region}"},
+				},
+			}
+		}
+		finalStatements = append(finalStatements, stmt)
+	}
+
+	return finalStatements
 }
 
 // Render formats statements into the requested format (json, tf, cdk, pulumi, cfn).
@@ -182,11 +221,17 @@ func Render(items []ActionItem, opts RenderOptions) (string, error) {
 
 // RenderJSON formats statements as canonical AWS IAM JSON.
 func RenderJSON(statements []Statement) (string, error) {
+	type jsonPrincipal struct {
+		AWS string `json:"AWS,omitempty"`
+	}
+
 	type jsonStatement struct {
-		Sid      string   `json:"Sid,omitempty"`
-		Effect   string   `json:"Effect"`
-		Action   []string `json:"Action"`
-		Resource []string `json:"Resource"`
+		Sid       string                         `json:"Sid,omitempty"`
+		Effect    string                         `json:"Effect"`
+		Principal *jsonPrincipal                 `json:"Principal,omitempty"`
+		Action    []string                       `json:"Action"`
+		Resource  []string                       `json:"Resource"`
+		Condition map[string]map[string][]string `json:"Condition,omitempty"`
 	}
 
 	type jsonPolicy struct {
@@ -204,11 +249,18 @@ func RenderJSON(statements []Statement) (string, error) {
 		}
 		sort.Strings(actionNames)
 
+		var principal *jsonPrincipal
+		if stmt.Principal != "" {
+			principal = &jsonPrincipal{AWS: stmt.Principal}
+		}
+
 		policy.Statement = append(policy.Statement, jsonStatement{
-			Sid:      stmt.Sid,
-			Effect:   "Allow",
-			Action:   actionNames,
-			Resource: stmt.ResourceARNs,
+			Sid:       stmt.Sid,
+			Effect:    "Allow",
+			Principal: principal,
+			Action:    actionNames,
+			Resource:  stmt.ResourceARNs,
+			Condition: stmt.Conditions,
 		})
 	}
 
@@ -234,6 +286,13 @@ func RenderTerraform(statements []Statement, emitVars bool) string {
 		buf.WriteString(fmt.Sprintf("    sid    = %q\n", stmt.Sid))
 		buf.WriteString("    effect = \"Allow\"\n")
 
+		if stmt.Principal != "" {
+			buf.WriteString("    principals {\n")
+			buf.WriteString("      type        = \"AWS\"\n")
+			buf.WriteString(fmt.Sprintf("      identifiers = [%q]\n", stmt.Principal))
+			buf.WriteString("    }\n")
+		}
+
 		// actions
 		buf.WriteString("    actions = [\n")
 		for _, act := range stmt.Actions {
@@ -252,6 +311,23 @@ func RenderTerraform(statements []Statement, emitVars bool) string {
 			allResources = append(allResources, r)
 		}
 		buf.WriteString("    ]\n")
+
+		if len(stmt.Conditions) > 0 {
+			for test, varMap := range stmt.Conditions {
+				for varName, vals := range varMap {
+					buf.WriteString("    condition {\n")
+					buf.WriteString(fmt.Sprintf("      test     = %q\n", test))
+					buf.WriteString(fmt.Sprintf("      variable = %q\n", varName))
+					buf.WriteString("      values   = [\n")
+					for _, val := range vals {
+						buf.WriteString(fmt.Sprintf("        %q,\n", val))
+						allResources = append(allResources, val)
+					}
+					buf.WriteString("      ]\n")
+					buf.WriteString("    }\n")
+				}
+			}
+		}
 
 		buf.WriteString("  }\n")
 	}

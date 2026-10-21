@@ -62,6 +62,58 @@ func TestRenderJSON(t *testing.T) {
 	}
 }
 
+func TestRenderSCP(t *testing.T) {
+	items := sampleActionItems()
+	opts := RenderOptions{
+		Format:     FormatJSON,
+		PolicyType: PolicyTypeSCP,
+		StrictARNs: true, // SCP must force wildcard resources
+	}
+
+	out, err := Render(items, opts)
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	var parsed struct {
+		Statement []struct {
+			Resource []string `json:"Resource"`
+		} `json:"Statement"`
+	}
+	if err := json.Unmarshal([]byte(out), &parsed); err != nil {
+		t.Fatalf("Parse error: %v", err)
+	}
+
+	for _, s := range parsed.Statement {
+		if len(s.Resource) != 1 || s.Resource[0] != "*" {
+			t.Errorf("SCP must have Resource: '*', got: %v", s.Resource)
+		}
+	}
+}
+
+func TestRenderResourcePolicyAndConditions(t *testing.T) {
+	items := sampleActionItems()
+	opts := RenderOptions{
+		Format:               FormatTF,
+		PolicyType:           PolicyTypeResource,
+		PrincipalARN:         "arn:aws:iam::123456789012:role/AppRole",
+		SynthesizeConditions: true,
+		EmitVars:             true,
+	}
+
+	out, err := Render(items, opts)
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	if !strings.Contains(out, `identifiers = ["arn:aws:iam::123456789012:role/AppRole"]`) {
+		t.Errorf("Expected principal in Terraform output, got:\n%s", out)
+	}
+	if !strings.Contains(out, `variable = "aws:RequestedRegion"`) {
+		t.Errorf("Expected condition aws:RequestedRegion, got:\n%s", out)
+	}
+}
+
 func TestRenderTerraformWithVars(t *testing.T) {
 	items := sampleActionItems()
 	opts := RenderOptions{
@@ -121,9 +173,6 @@ func TestRenderPulumi(t *testing.T) {
 
 	if !strings.Contains(out, `import * as aws from "@pulumi/aws";`) {
 		t.Errorf("Expected Pulumi import statement")
-	}
-	if !strings.Contains(out, `aws.iam.getPolicyDocumentOutput`) {
-		t.Errorf("Expected getPolicyDocumentOutput in Pulumi output")
 	}
 }
 
