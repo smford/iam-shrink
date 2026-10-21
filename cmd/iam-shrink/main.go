@@ -386,12 +386,18 @@ func handleReport(args []string) {
 func handleUpdateRules(args []string) {
 	fs := flag.NewFlagSet("update-rules", flag.ContinueOnError)
 	sourceURL := fs.String("source", "", "Custom rules feed URL")
+	urlAlias := fs.String("url", "", "Alias for --source")
 
 	if err := fs.Parse(args); err != nil {
 		os.Exit(1)
 	}
 
-	dest, err := compliance.UpdateRules(*sourceURL)
+	targetURL := *sourceURL
+	if targetURL == "" && *urlAlias != "" {
+		targetURL = *urlAlias
+	}
+
+	dest, err := compliance.UpdateRules(targetURL)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to update rules: %v\n", err)
 		os.Exit(1)
