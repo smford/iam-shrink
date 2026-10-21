@@ -13,10 +13,12 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/smford/iam-shrink/internal/compliance"
 	"github.com/smford/iam-shrink/internal/csm"
 	"github.com/smford/iam-shrink/internal/diff"
 	"github.com/smford/iam-shrink/internal/linter"
 	"github.com/smford/iam-shrink/internal/mapper"
+	"github.com/smford/iam-shrink/internal/otel"
 	"github.com/smford/iam-shrink/internal/patcher"
 	"github.com/smford/iam-shrink/internal/proxy"
 	"github.com/smford/iam-shrink/internal/render"
@@ -36,8 +38,11 @@ type Options struct {
 	StrictARNs           bool
 	EmitVars             bool
 	SynthesizeConditions bool
+	SynthesizeNotAction  bool
 	PrincipalARN         string
 	EnableProxy          bool
+	ComplianceStandard   string // "cis", "nist", "all"
+	ExportOTel           string // Path to write OTel JSON traces
 	DiffAgainst          string
 	LintPolicy           bool
 	CustomMappings       string // Path to optional YAML overrides
@@ -219,12 +224,45 @@ func Run(ctx context.Context, opts Options) (*Result, error) {
 		StrictARNs:           opts.StrictARNs,
 		EmitVars:             opts.EmitVars,
 		SynthesizeConditions: opts.SynthesizeConditions,
+		SynthesizeNotAction:  opts.SynthesizeNotAction,
 		PrincipalARN:         opts.PrincipalARN,
 	}
 
 	renderedPolicy, err := render.Render(actionItems, renderOpts)
 	if err != nil {
 		return nil, fmt.Errorf("rendering policy: %w", err)
+	}
+
+	// Optional OpenTelemetry Export
+	if opts.ExportOTel != "" {
+		if err := otel.ExportToFile(opts.ExportOTel, rawEvents); err != nil {
+			_, _ = fmt.Fprintf(stderrWriter, "Warning: failed to export OTel traces to %s: %v\n", opts.ExportOTel, err)
+		} else {
+			_, _ = fmt.Fprintf(stderrWriter, "Exported OTel trace spans to %s\n", opts.ExportOTel)
+		}
+	}
+
+	// Optional Compliance Check
+	if opts.ComplianceStandard != "" {
+		reg, err := compliance.NewRegistry("")
+		if err == nil {
+			var actNames []string
+			resByAct := make(map[string][]string)
+			for _, item := range actionItems {
+				actNames = append(actNames, item.Action)
+				resByAct[strings.ToLower(item.Action)] = item.ResourceARNs
+			}
+			stds := []string{opts.ComplianceStandard}
+			if opts.ComplianceStandard == "all" {
+				stds = []string{"cis", "nist"}
+			}
+			for _, s := range stds {
+				report, err := reg.Evaluate(s, actNames, resByAct)
+				if err == nil {
+					_, _ = io.WriteString(stderrWriter, "\n"+report.FormatTerminal())
+				}
+			}
+		}
 	}
 
 	// Optional Terraform in-place patching

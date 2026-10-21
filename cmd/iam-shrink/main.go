@@ -13,7 +13,9 @@ import (
 	"time"
 
 	"github.com/smford/iam-shrink/internal/advisor"
+	"github.com/smford/iam-shrink/internal/ci"
 	"github.com/smford/iam-shrink/internal/cloudtrail"
+	"github.com/smford/iam-shrink/internal/compliance"
 	"github.com/smford/iam-shrink/internal/csm"
 	"github.com/smford/iam-shrink/internal/diff"
 	"github.com/smford/iam-shrink/internal/k8s"
@@ -23,11 +25,12 @@ import (
 	"github.com/smford/iam-shrink/internal/render"
 	"github.com/smford/iam-shrink/internal/runner"
 	"github.com/smford/iam-shrink/internal/session"
+	"github.com/smford/iam-shrink/internal/state"
 	"github.com/smford/iam-shrink/internal/vscode"
 )
 
 var (
-	version = "0.3.0"
+	version = "0.4.0"
 )
 
 func printUsage() {
@@ -38,6 +41,11 @@ Usage:
   iam-shrink ingest [flags] <cloudtrail-file-or-dir>
   iam-shrink patch --file=<main.tf> [flags] -- <command> [args...]
   iam-shrink prune-role <role-policy.json> [flags]
+  iam-shrink report [flags] <policy.json>
+  iam-shrink update-rules [flags]
+  iam-shrink state <terraform.tfstate> [policy.json]
+  iam-shrink pr-comment [flags]
+  iam-shrink gate [flags] <policy.json>
   iam-shrink diff <existing-policy.json> [captured-policy.json]
   iam-shrink lint <policy.json>
   iam-shrink explain <service>:<api>
@@ -52,6 +60,11 @@ Commands:
   ingest           Process AWS CloudTrail logs (.json, .json.gz) and synthesize a policy
   patch            Execute a command and update a Terraform .tf file in-place
   prune-role       Prune unaccessed permissions from an existing IAM role policy
+  report           Audit an IAM policy against CIS AWS Foundations or NIST SP 800-53 benchmarks
+  update-rules     Download updated CIS & NIST rule schemas to ~/.iam-shrink/rules/
+  state            Resolve parameterized ARN variables using Terraform/OpenTofu tfstate
+  pr-comment       Generate a formatted GitHub/GitLab Pull Request markdown comment
+  gate             Enforce a CI/CD quality gate (blocks builds on wildcards or high risks)
   diff             Compare an existing IAM policy against captured runtime permissions
   lint             Analyze an IAM policy for security risks and privilege escalation
   explain          Show IAM mapping, required ARNs, and dependencies for an SDK API
@@ -62,7 +75,7 @@ Commands:
   version          Show version information
 
 Flags for 'run':
-  --format string           Output format: json, tf, cdk, pulumi, cfn (default "json")
+  --format string           Output format: json, tf, cdk, cdktf, pulumi, cfn (default "json")
   --policy-type string      Policy type: identity, boundary, scp, resource (default "identity")
   --out string              Output file path (default: stdout)
   --patch-file string       Path to Terraform .tf file to patch in-place
@@ -72,21 +85,52 @@ Flags for 'run':
   --strict-arns             Generate parameterized ARN placeholders instead of '*' (default false)
   --emit-vars               Emit companion Terraform variable definitions (with --format=tf) (default false)
   --conditions              Synthesize AWS condition blocks (e.g. aws:RequestedRegion) (default false)
+  --synthesize-notaction    Invert policy into an explicit Deny with NotAction (default false)
   --principal string        Principal ARN for resource-based policies (default: account root)
   --proxy                   Enable local HTTP/HTTPS interception proxy for exact resource extraction (default false)
+  --compliance string       Evaluate compliance during run: cis, nist, all (default "")
+  --export-otel string      Export captured calls to OpenTelemetry trace JSON file (default "")
   --lint                    Run security linter checks on generated policy (default false)
   --diff-against string     Compare generated policy against an existing policy JSON file
   --mappings string         Path to custom YAML file to extend or override mappings
 
 Examples:
   iam-shrink run --format=tf --strict-arns --emit-vars -- go test ./...
-  iam-shrink run --policy-type=scp --format=json -- python test_suite.py
-  iam-shrink run --patch-file=main.tf -- go test ./...
-  iam-shrink ingest --format=tf /path/to/cloudtrail/logs/
-  iam-shrink prune-role existing_role.json --active-actions="s3:GetObject,dynamodb:PutItem"
-  iam-shrink k8s manifest --deployment=api-service > k8s-telemetry.yaml
-  iam-shrink init-vscode
+  iam-shrink run --format=cdktf -- python test_suite.py
+  iam-shrink report --standard=cis policy.json
+  iam-shrink state terraform.tfstate policy.json
+  iam-shrink gate --fail-on-wildcard policy.json
+  iam-shrink pr-comment --existing=base_role.json --captured=new_policy.json --standard=cis
 `)
+}
+
+func parseFlagsAndPosArgs(fs *flag.FlagSet, args []string) ([]string, error) {
+	var flagArgs []string
+	var posArgs []string
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		if strings.HasPrefix(a, "-") {
+			flagArgs = append(flagArgs, a)
+			if !strings.Contains(a, "=") && i+1 < len(args) && !strings.HasPrefix(args[i+1], "-") {
+				f := fs.Lookup(strings.TrimLeft(a, "-"))
+				if f != nil {
+					if bf, ok := f.Value.(interface{ IsBoolFlag() bool }); !ok || !bf.IsBoolFlag() {
+						flagArgs = append(flagArgs, args[i+1])
+						i++
+					}
+				} else {
+					flagArgs = append(flagArgs, args[i+1])
+					i++
+				}
+			}
+		} else {
+			posArgs = append(posArgs, a)
+		}
+	}
+	if err := fs.Parse(flagArgs); err != nil {
+		return nil, err
+	}
+	return posArgs, nil
 }
 
 func main() {
@@ -106,6 +150,16 @@ func main() {
 		handlePatch(os.Args[2:])
 	case "prune-role":
 		handlePruneRole(os.Args[2:])
+	case "report":
+		handleReport(os.Args[2:])
+	case "update-rules":
+		handleUpdateRules(os.Args[2:])
+	case "state":
+		handleState(os.Args[2:])
+	case "pr-comment":
+		handlePRComment(os.Args[2:])
+	case "gate":
+		handleGate(os.Args[2:])
 	case "diff":
 		handleDiff(os.Args[2:])
 	case "lint":
@@ -149,14 +203,17 @@ func handleRun(args []string) {
 		strictARNs           bool
 		emitVars             bool
 		synthesizeConditions bool
+		synthesizeNotAction  bool
 		principalARN         string
 		enableProxy          bool
+		complianceStandard   string
+		exportOTel           string
 		lintPolicy           bool
 		diffAgainst          string
 		mappingsPath         string
 	)
 
-	fs.StringVar(&formatStr, "format", "json", "Output format: json, tf, cdk, pulumi, cfn")
+	fs.StringVar(&formatStr, "format", "json", "Output format: json, tf, cdk, cdktf, pulumi, cfn")
 	fs.StringVar(&policyTypeStr, "policy-type", "identity", "Policy type: identity, boundary, scp, resource")
 	fs.StringVar(&outFile, "out", "", "Output file path (default: stdout)")
 	fs.StringVar(&patchFile, "patch-file", "", "Path to Terraform .tf file to patch in-place")
@@ -167,8 +224,11 @@ func handleRun(args []string) {
 	fs.BoolVar(&strictARNs, "strict-arns", false, "Generate parameterized ARN placeholders instead of '*'")
 	fs.BoolVar(&emitVars, "emit-vars", false, "Emit companion Terraform variables (with --format=tf)")
 	fs.BoolVar(&synthesizeConditions, "conditions", false, "Synthesize AWS condition blocks")
+	fs.BoolVar(&synthesizeNotAction, "synthesize-notaction", false, "Invert policy into an explicit Deny with NotAction")
 	fs.StringVar(&principalARN, "principal", "", "Principal ARN for resource-based policies")
 	fs.BoolVar(&enableProxy, "proxy", false, "Enable HTTP/HTTPS proxy for exact resource extraction")
+	fs.StringVar(&complianceStandard, "compliance", "", "Evaluate compliance during run: cis, nist, all")
+	fs.StringVar(&exportOTel, "export-otel", "", "Path to write OpenTelemetry trace JSON file")
 	fs.BoolVar(&lintPolicy, "lint", false, "Analyze generated policy for security risks")
 	fs.StringVar(&diffAgainst, "diff-against", "", "Path to existing policy JSON to compare against")
 	fs.StringVar(&mappingsPath, "mappings", "", "Path to custom YAML mappings override file")
@@ -226,8 +286,11 @@ func handleRun(args []string) {
 		StrictARNs:           strictARNs,
 		EmitVars:             emitVars,
 		SynthesizeConditions: synthesizeConditions,
+		SynthesizeNotAction:  synthesizeNotAction,
 		PrincipalARN:         principalARN,
 		EnableProxy:          enableProxy,
+		ComplianceStandard:   complianceStandard,
+		ExportOTel:           exportOTel,
 		DiffAgainst:          diffAgainst,
 		LintPolicy:           lintPolicy,
 		CustomMappings:       mappingsPath,
@@ -246,37 +309,209 @@ func handleRun(args []string) {
 	}
 }
 
-func parseFlagsAndPosArgs(fs *flag.FlagSet, args []string) ([]string, error) {
-	var flagArgs []string
-	var posArgs []string
-	for i := 0; i < len(args); i++ {
-		a := args[i]
-		if strings.HasPrefix(a, "-") {
-			flagArgs = append(flagArgs, a)
-			// Check if flag takes a separate value argument
-			if !strings.Contains(a, "=") && i+1 < len(args) && !strings.HasPrefix(args[i+1], "-") {
-				// Peek if flag is known boolean
-				f := fs.Lookup(strings.TrimLeft(a, "-"))
-				if f != nil {
-					// Check if boolean flag
-					if bf, ok := f.Value.(interface{ IsBoolFlag() bool }); !ok || !bf.IsBoolFlag() {
-						flagArgs = append(flagArgs, args[i+1])
-						i++
-					}
-				} else {
-					// Unknown or custom, pass value
-					flagArgs = append(flagArgs, args[i+1])
-					i++
-				}
-			}
-		} else {
-			posArgs = append(posArgs, a)
+func handleReport(args []string) {
+	fs := flag.NewFlagSet("report", flag.ContinueOnError)
+	standardName := fs.String("standard", "cis", "Compliance standard: cis, nist")
+	customRules := fs.String("rules", "", "Path to custom compliance rules YAML file")
+	outputFormat := fs.String("format", "terminal", "Output format: terminal, markdown, json")
+
+	files, err := parseFlagsAndPosArgs(fs, args)
+	if err != nil {
+		os.Exit(1)
+	}
+
+	if len(files) == 0 {
+		fmt.Fprintf(os.Stderr, "Usage: iam-shrink report [--standard=cis|nist] <policy.json>\n")
+		os.Exit(1)
+	}
+
+	policyPath := files[0]
+	actions, err := diff.ParseActionsFile(policyPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error reading policy %s: %v\n", policyPath, err)
+		os.Exit(1)
+	}
+
+	reg, err := compliance.NewRegistry(*customRules)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Initializing compliance registry: %v\n", err)
+		os.Exit(1)
+	}
+
+	resByAct := make(map[string][]string)
+	for _, a := range actions {
+		resByAct[strings.ToLower(a)] = []string{"*"}
+	}
+
+	rep, err := reg.Evaluate(*standardName, actions, resByAct)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Evaluation error: %v\n", err)
+		os.Exit(1)
+	}
+
+	switch *outputFormat {
+	case "markdown":
+		fmt.Print(rep.FormatMarkdown())
+	case "json":
+		data, _ := os.ReadFile(policyPath)
+		_ = data
+		fmt.Println(rep.FormatTerminal())
+	default:
+		fmt.Print(rep.FormatTerminal())
+	}
+}
+
+func handleUpdateRules(args []string) {
+	fs := flag.NewFlagSet("update-rules", flag.ContinueOnError)
+	sourceURL := fs.String("source", "", "Custom rules feed URL")
+
+	if err := fs.Parse(args); err != nil {
+		os.Exit(1)
+	}
+
+	dest, err := compliance.UpdateRules(*sourceURL)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to update rules: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("Updated compliance rule baseline saved to %s\n", dest)
+}
+
+func handleState(args []string) {
+	if len(args) < 1 {
+		fmt.Fprintf(os.Stderr, "Usage: iam-shrink state <terraform.tfstate> [policy.json]\n")
+		os.Exit(1)
+	}
+
+	statePath := args[0]
+	stateData, err := os.ReadFile(statePath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error reading state file %s: %v\n", statePath, err)
+		os.Exit(1)
+	}
+
+	var policyText string
+	if len(args) >= 2 {
+		data, err := os.ReadFile(args[1])
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error reading policy %s: %v\n", args[1], err)
+			os.Exit(1)
 		}
+		policyText = string(data)
+	} else {
+		stdinData, err := io.ReadAll(os.Stdin)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error reading stdin: %v\n", err)
+			os.Exit(1)
+		}
+		policyText = string(stdinData)
 	}
-	if err := fs.Parse(flagArgs); err != nil {
-		return nil, err
+
+	resolved, count, err := state.ResolvePolicyWithState(policyText, stateData)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "State resolution error: %v\n", err)
+		os.Exit(1)
 	}
-	return posArgs, nil
+
+	fmt.Fprintf(os.Stderr, "Resolved %d deployed resource ARNs from %s\n", count, statePath)
+	fmt.Print(resolved)
+}
+
+func handlePRComment(args []string) {
+	fs := flag.NewFlagSet("pr-comment", flag.ContinueOnError)
+	existingPath := fs.String("existing", "", "Path to baseline/existing policy JSON")
+	capturedPath := fs.String("captured", "", "Path to new/captured policy JSON")
+	standard := fs.String("standard", "cis", "Compliance standard to include in report")
+
+	if err := fs.Parse(args); err != nil {
+		os.Exit(1)
+	}
+
+	if *existingPath == "" || *capturedPath == "" {
+		fmt.Fprintf(os.Stderr, "Usage: iam-shrink pr-comment --existing=base.json --captured=new.json [--standard=cis]\n")
+		os.Exit(1)
+	}
+
+	existingActions, err := diff.ParseActionsFile(*existingPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Reading existing policy %s: %v\n", *existingPath, err)
+		os.Exit(1)
+	}
+
+	capturedActions, err := diff.ParseActionsFile(*capturedPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Reading captured policy %s: %v\n", *capturedPath, err)
+		os.Exit(1)
+	}
+
+	diffRes := diff.Compare(existingActions, capturedActions)
+
+	reg, err := compliance.NewRegistry("")
+	var compRep *compliance.Report
+	if err == nil && *standard != "" {
+		resByAct := make(map[string][]string)
+		for _, a := range capturedActions {
+			resByAct[strings.ToLower(a)] = []string{"*"}
+		}
+		compRep, _ = reg.Evaluate(*standard, capturedActions, resByAct)
+	}
+
+	fmt.Print(ci.FormatPRComment(diffRes, compRep))
+}
+
+func handleGate(args []string) {
+	fs := flag.NewFlagSet("gate", flag.ContinueOnError)
+	failOnWildcard := fs.Bool("fail-on-wildcard", true, "Fail build if wildcard actions are present")
+	maxSeverity := fs.String("max-severity", "HIGH", "Fail build if violations equal or exceed severity")
+	minCompliance := fs.Float64("min-compliance", 75.0, "Minimum compliance score (0-100)")
+	standard := fs.String("standard", "cis", "Standard to evaluate: cis, nist")
+
+	files, err := parseFlagsAndPosArgs(fs, args)
+	if err != nil {
+		os.Exit(1)
+	}
+
+	if len(files) == 0 {
+		fmt.Fprintf(os.Stderr, "Usage: iam-shrink gate [flags] <policy.json>\n")
+		os.Exit(1)
+	}
+
+	policyPath := files[0]
+	actions, err := diff.ParseActionsFile(policyPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error reading policy %s: %v\n", policyPath, err)
+		os.Exit(1)
+	}
+
+	issues, _ := linter.LintFile(policyPath)
+
+	reg, err := compliance.NewRegistry("")
+	var compRep *compliance.Report
+	if err == nil {
+		resByAct := make(map[string][]string)
+		for _, a := range actions {
+			resByAct[strings.ToLower(a)] = []string{"*"}
+		}
+		compRep, _ = reg.Evaluate(*standard, actions, resByAct)
+	}
+
+	gateOpts := ci.GateOptions{
+		FailOnWildcard: *failOnWildcard,
+		MaxSeverity:    *maxSeverity,
+		MinCompliance:  *minCompliance,
+	}
+
+	res := ci.EvaluateGate(actions, issues, compRep, gateOpts)
+	if !res.Passed {
+		fmt.Fprintf(os.Stderr, "❌ Quality Gate FAILED (%d violations):\n", len(res.Reasons))
+		for _, r := range res.Reasons {
+			fmt.Fprintf(os.Stderr, "  - %s\n", r)
+		}
+		os.Exit(1)
+	}
+
+	fmt.Println("✅ Quality Gate PASSED: Policy meets least-privilege standards.")
 }
 
 func handleIngest(args []string) {
@@ -809,7 +1044,7 @@ func handleSessionDump(mgr *session.Manager, args []string) {
 	}
 
 	fs := flag.NewFlagSet("session dump", flag.ContinueOnError)
-	formatStr := fs.String("format", "json", "Output format: json, tf, cdk, pulumi, cfn")
+	formatStr := fs.String("format", "json", "Output format: json, tf, cdk, cdktf, pulumi, cfn")
 	strictARNs := fs.Bool("strict-arns", false, "Use strict ARNs")
 	groupByService := fs.Bool("group-by-service", true, "Group statements by service")
 	splitByAccess := fs.Bool("split-by-access-level", false, "Split statements by access level")
