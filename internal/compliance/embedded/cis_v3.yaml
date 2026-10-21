@@ -1,0 +1,40 @@
+name: CIS AWS Foundations Benchmark
+version: "v3.0.0"
+description: Security guidelines and baseline controls for AWS IAM policies
+rules:
+  - id: CIS-1.16-NO-WILDCARD-ADMIN
+    control_id: "1.16"
+    title: Ensure IAM policies that allow full administrative privileges are not created
+    severity: CRITICAL
+    deny_actions:
+      - "*"
+    remediation: Remove full administrative Action '*' and scope down to specific least-privilege actions.
+
+  - id: CIS-1.20-NO-UNCONSTRAINED-PASSROLE
+    control_id: "1.20"
+    title: Ensure iam:PassRole access is not granted on wildcard resource '*'
+    severity: HIGH
+    deny_wildcard_resources_on_actions:
+      - "iam:passrole"
+    remediation: Restrict iam:PassRole to specific, authorized role ARNs instead of '*'.
+
+  - id: CIS-1.21-NO-UNCONSTRAINED-ASSUMEROLE
+    control_id: "1.21"
+    title: Ensure sts:AssumeRole access is not granted on wildcard resource '*'
+    severity: HIGH
+    deny_wildcard_resources_on_actions:
+      - "sts:assumerole"
+    remediation: Restrict sts:AssumeRole to specific role ARNs.
+
+  - id: CIS-1.22-NO-SERVICE-WILDCARD
+    control_id: "1.22"
+    title: Ensure service-level wildcard actions are not used
+    severity: MEDIUM
+    deny_actions:
+      - "s3:*"
+      - "dynamodb:*"
+      - "iam:*"
+      - "kms:*"
+      - "sqs:*"
+      - "ec2:*"
+    remediation: Scope down service wildcards (e.g. s3:*) to the exact APIs exercised at runtime.
