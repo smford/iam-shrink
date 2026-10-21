@@ -4,7 +4,7 @@ description: Security and Privacy Controls for Information Systems and Organizat
 rules:
     - id: NIST-AC-6-LEAST-PRIVILEGE-ADMIN
       control_id: AC-6
-      title: Least Privilege - Prevent Uncontrolled Administrative Privileges
+      title: Least Privilege (AC-6)
       severity: CRITICAL
       deny_actions:
         - '*'
@@ -22,7 +22,7 @@ rules:
       remediation: Define explicit resource ARNs for delegation and policy attachment actions.
     - id: NIST-AC-3-ACCESS-ENFORCEMENT
       control_id: AC-3
-      title: Access Enforcement - Avoid Unbounded Service Grants
+      title: Access Enforcement (AC-3)
       severity: MEDIUM
       deny_actions:
         - s3:*
@@ -32,7 +32,7 @@ rules:
       remediation: Restrict permissions to verified operational calls.
     - id: NIST-SC-12-CRYPTOGRAPHIC-PROTECTION
       control_id: SC-12
-      title: Cryptographic Key Management - Constrain KMS Decrypt/Encrypt Keys
+      title: Cryptographic Key Establishment And Management (SC-12)
       severity: HIGH
       deny_wildcard_resources_on_actions:
         - kms:decrypt

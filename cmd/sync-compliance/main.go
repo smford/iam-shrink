@@ -27,6 +27,7 @@ type ProwlerBenchmark struct {
 
 type ProwlerRequirement struct {
 	ID          string             `json:"Id"`
+	Name        string             `json:"Name,omitempty"`
 	Description string             `json:"Description"`
 	Checks      []string           `json:"Checks"`
 	Attributes  []ProwlerAttribute `json:"Attributes"`
@@ -43,38 +44,49 @@ type ProwlerAttribute struct {
 func main() {
 	outDir := flag.String("out-dir", "internal/compliance/embedded", "Directory to write embedded compliance YAML files")
 	prowlerURL := flag.String("prowler-url", "https://raw.githubusercontent.com/prowler-cloud/prowler/master/prowler/compliance/aws/cis_3.0_aws.json", "Upstream Prowler CIS AWS Benchmark JSON URL")
+	nistURL := flag.String("nist-url", "https://raw.githubusercontent.com/prowler-cloud/prowler/master/prowler/compliance/aws/nist_800_53_revision_5_aws.json", "Upstream Prowler NIST 800-53 Rev 5 Benchmark JSON URL")
 	flag.Parse()
 
-	fmt.Printf("Fetching upstream CIS AWS benchmark from %s...\n", *prowlerURL)
-
 	client := &http.Client{Timeout: 30 * time.Second}
-	resp, err := client.Get(*prowlerURL)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: failed to fetch upstream Prowler JSON: %v. Using canonical baseline.\n", err)
-	}
 
-	var prowlerData ProwlerBenchmark
-	if resp != nil && resp.StatusCode == http.StatusOK {
+	// 1. Sync CIS AWS Benchmark
+	fmt.Printf("Fetching upstream CIS AWS benchmark from %s...\n", *prowlerURL)
+	var cisProwler ProwlerBenchmark
+	if resp, err := client.Get(*prowlerURL); err == nil && resp.StatusCode == http.StatusOK {
 		defer resp.Body.Close()
 		body, _ := io.ReadAll(resp.Body)
-		_ = json.Unmarshal(body, &prowlerData)
-		fmt.Printf("Successfully loaded %d requirements from upstream %s v%s\n", len(prowlerData.Requirements), prowlerData.Framework, prowlerData.Version)
+		_ = json.Unmarshal(body, &cisProwler)
+		fmt.Printf("Successfully loaded %d requirements from upstream %s v%s\n", len(cisProwler.Requirements), cisProwler.Framework, cisProwler.Version)
 	}
 
-	// Index Prowler requirements by Control ID for enriched descriptions and remediations
-	reqByID := make(map[string]ProwlerRequirement)
-	for _, req := range prowlerData.Requirements {
-		reqByID[req.ID] = req
+	cisReqByID := make(map[string]ProwlerRequirement)
+	for _, req := range cisProwler.Requirements {
+		cisReqByID[req.ID] = req
 	}
 
-	cisStandard := buildCISStandard(reqByID)
+	cisStandard := buildCISStandard(cisReqByID)
 	if err := writeYAMLFile(filepath.Join(*outDir, "cis_v3.yaml"), cisStandard); err != nil {
 		fmt.Fprintf(os.Stderr, "Error writing cis_v3.yaml: %v\n", err)
 		os.Exit(1)
 	}
 	fmt.Printf("✓ Successfully synced %s (%d rules)\n", filepath.Join(*outDir, "cis_v3.yaml"), len(cisStandard.Rules))
 
-	nistStandard := buildNISTStandard()
+	// 2. Sync NIST SP 800-53 Rev 5
+	fmt.Printf("Fetching upstream NIST SP 800-53 benchmark from %s...\n", *nistURL)
+	var nistProwler ProwlerBenchmark
+	if resp, err := client.Get(*nistURL); err == nil && resp.StatusCode == http.StatusOK {
+		defer resp.Body.Close()
+		body, _ := io.ReadAll(resp.Body)
+		_ = json.Unmarshal(body, &nistProwler)
+		fmt.Printf("Successfully loaded %d requirements from upstream %s\n", len(nistProwler.Requirements), nistProwler.Framework)
+	}
+
+	nistReqByID := make(map[string]ProwlerRequirement)
+	for _, req := range nistProwler.Requirements {
+		nistReqByID[req.ID] = req
+	}
+
+	nistStandard := buildNISTStandard(nistReqByID)
 	if err := writeYAMLFile(filepath.Join(*outDir, "nist_800_53.yaml"), nistStandard); err != nil {
 		fmt.Fprintf(os.Stderr, "Error writing nist_800_53.yaml: %v\n", err)
 		os.Exit(1)
@@ -133,12 +145,12 @@ func buildCISStandard(prowlerReqs map[string]ProwlerRequirement) compliance.Stan
 	}
 }
 
-func buildNISTStandard() compliance.Standard {
+func buildNISTStandard(nistReqs map[string]ProwlerRequirement) compliance.Standard {
 	rules := []compliance.Rule{
 		{
 			ID:          "NIST-AC-6-LEAST-PRIVILEGE-ADMIN",
 			ControlID:   "AC-6",
-			Title:       "Least Privilege - Prevent Uncontrolled Administrative Privileges",
+			Title:       getNistTitle(nistReqs, "ac_6", "Least Privilege - Prevent Uncontrolled Administrative Privileges"),
 			Severity:    "CRITICAL",
 			DenyActions: []string{"*"},
 			Remediation: "Implement least privilege by strictly removing wildcard actions.",
@@ -160,7 +172,7 @@ func buildNISTStandard() compliance.Standard {
 		{
 			ID:        "NIST-AC-3-ACCESS-ENFORCEMENT",
 			ControlID: "AC-3",
-			Title:     "Access Enforcement - Avoid Unbounded Service Grants",
+			Title:     getNistTitle(nistReqs, "ac_3", "Access Enforcement - Avoid Unbounded Service Grants"),
 			Severity:  "MEDIUM",
 			DenyActions: []string{
 				"s3:*",
@@ -173,7 +185,7 @@ func buildNISTStandard() compliance.Standard {
 		{
 			ID:                             "NIST-SC-12-CRYPTOGRAPHIC-PROTECTION",
 			ControlID:                      "SC-12",
-			Title:                          "Cryptographic Key Management - Constrain KMS Decrypt/Encrypt Keys",
+			Title:                          getNistTitle(nistReqs, "sc_12", "Cryptographic Key Management - Constrain KMS Decrypt/Encrypt Keys"),
 			Severity:                       "HIGH",
 			DenyWildcardResourcesOnActions: []string{"kms:decrypt"},
 			Remediation:                    "Restrict kms:Decrypt to designated key ARNs instead of '*'.",
@@ -186,6 +198,13 @@ func buildNISTStandard() compliance.Standard {
 		Description: "Security and Privacy Controls for Information Systems and Organizations",
 		Rules:       rules,
 	}
+}
+
+func getNistTitle(reqs map[string]ProwlerRequirement, id string, fallback string) string {
+	if req, ok := reqs[id]; ok && req.Name != "" {
+		return req.Name
+	}
+	return fallback
 }
 
 func getReqTitle(reqs map[string]ProwlerRequirement, id string, fallback string) string {
