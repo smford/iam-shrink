@@ -9,25 +9,34 @@ import (
 	"os/signal"
 	"sort"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
 	"github.com/smford/iam-shrink/internal/csm"
+	"github.com/smford/iam-shrink/internal/diff"
+	"github.com/smford/iam-shrink/internal/linter"
 	"github.com/smford/iam-shrink/internal/mapper"
+	"github.com/smford/iam-shrink/internal/proxy"
 	"github.com/smford/iam-shrink/internal/render"
 )
 
 // Options configures the execution of a child command and policy generation.
 type Options struct {
-	Command        []string
-	Format         render.FormatType
-	OutputFile     string
-	IncludeFailed  bool
-	GroupByService bool
-	StrictARNs     bool
-	CustomMappings string // Path to optional YAML overrides
-	Stdout         io.Writer
-	Stderr         io.Writer
+	Command            []string
+	Format             render.FormatType
+	OutputFile         string
+	IncludeFailed      bool
+	GroupByService     bool
+	SplitByAccessLevel bool
+	StrictARNs         bool
+	EmitVars           bool
+	EnableProxy        bool
+	DiffAgainst        string
+	LintPolicy         bool
+	CustomMappings     string // Path to optional YAML overrides
+	Stdout             io.Writer
+	Stderr             io.Writer
 }
 
 // Result holds the generated policy and child exit code.
@@ -71,6 +80,19 @@ func Run(ctx context.Context, opts Options) (*Result, error) {
 	}
 	collector.Start()
 
+	// 2b. Start Proxy if requested
+	var proxySrv *proxy.ProxyServer
+	if opts.EnableProxy {
+		var pErr error
+		proxySrv, pErr = proxy.NewProxyServer()
+		if pErr != nil {
+			collector.StopAndDrain(50 * time.Millisecond)
+			return nil, fmt.Errorf("starting HTTP proxy: %w", pErr)
+		}
+		proxySrv.Start()
+		defer proxySrv.Stop()
+	}
+
 	// 3. Prepare child process
 	childCmd := exec.CommandContext(ctx, opts.Command[0], opts.Command[1:]...)
 
@@ -81,6 +103,9 @@ func Run(ctx context.Context, opts Options) (*Result, error) {
 		fmt.Sprintf("AWS_CSM_PORT=%d", collector.Port()),
 		"AWS_CSM_HOST=127.0.0.1",
 	)
+	if proxySrv != nil {
+		env = append(env, proxySrv.Env()...)
+	}
 	childCmd.Env = env
 
 	// Route child I/O
@@ -134,6 +159,11 @@ func Run(ctx context.Context, opts Options) (*Result, error) {
 	rawEvents := collector.Events()
 	var actionItems []render.ActionItem
 
+	var exactResources map[string][]string
+	if proxySrv != nil {
+		exactResources = proxySrv.Resources()
+	}
+
 	// Map (Service, Api) pairs
 	seenCalls := make(map[string]bool)
 	for _, evt := range rawEvents {
@@ -152,11 +182,22 @@ func Run(ctx context.Context, opts Options) (*Result, error) {
 		seenCalls[callKey] = true
 
 		resolved := m.Resolve(evt.Service, evt.Api)
+
+		// Check if proxy extracted exact ARNs for this API
+		resourceARNs := resolved.ResourceARNs
+		if exactResources != nil {
+			proxyKey := strings.ToLower(evt.Service) + ":" + strings.ToLower(evt.Api)
+			if exact, found := exactResources[proxyKey]; found && len(exact) > 0 {
+				resourceARNs = exact
+			}
+		}
+
 		for _, act := range resolved.Actions {
 			actionItems = append(actionItems, render.ActionItem{
 				Action:       act,
 				Service:      resolved.ServicePrefix,
-				ResourceARNs: resolved.ResourceARNs,
+				ResourceARNs: resourceARNs,
+				AccessLevel:  resolved.AccessLevel,
 				IsFallback:   resolved.IsFallback,
 				FallbackNote: fmt.Sprintf("unmapped fallback from SDK call %s:%s", evt.Service, evt.Api),
 			})
@@ -165,14 +206,52 @@ func Run(ctx context.Context, opts Options) (*Result, error) {
 
 	// 8. Render policy
 	renderOpts := render.RenderOptions{
-		Format:         opts.Format,
-		GroupByService: opts.GroupByService,
-		StrictARNs:     opts.StrictARNs,
+		Format:             opts.Format,
+		GroupByService:     opts.GroupByService,
+		SplitByAccessLevel: opts.SplitByAccessLevel,
+		StrictARNs:         opts.StrictARNs,
+		EmitVars:           opts.EmitVars,
 	}
 
 	renderedPolicy, err := render.Render(actionItems, renderOpts)
 	if err != nil {
 		return nil, fmt.Errorf("rendering policy: %w", err)
+	}
+
+	// Optional Linter
+	if opts.LintPolicy {
+		var stmtsInput []linter.StatementInput
+		stmts := render.BuildStatements(actionItems, renderOpts)
+		for _, s := range stmts {
+			var acts []string
+			for _, a := range s.Actions {
+				acts = append(acts, a.Action)
+			}
+			stmtsInput = append(stmtsInput, linter.StatementInput{
+				Sid:       s.Sid,
+				Effect:    "Allow",
+				Actions:   acts,
+				Resources: s.ResourceARNs,
+			})
+		}
+		issues := linter.LintStatements(stmtsInput)
+		lintReport := linter.FormatIssues(issues)
+		_, _ = io.WriteString(stderrWriter, "\n"+lintReport)
+	}
+
+	// Optional Diff against existing policy
+	if opts.DiffAgainst != "" {
+		existingActions, err := diff.ParseActionsFile(opts.DiffAgainst)
+		if err != nil {
+			_, _ = fmt.Fprintf(stderrWriter, "Warning: failed to read diff policy %s: %v\n", opts.DiffAgainst, err)
+		} else {
+			var capturedActions []string
+			for _, item := range actionItems {
+				capturedActions = append(capturedActions, item.Action)
+			}
+			diffRes := diff.Compare(existingActions, capturedActions)
+			_, _ = io.WriteString(stderrWriter, "\n"+diffRes.Report())
+		}
 	}
 
 	// 9. Write policy to output destination
