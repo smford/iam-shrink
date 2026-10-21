@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    name: Build & Test
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        go: ['1.23', '1.24']
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go }}
+          cache: true
+
+      - name: Go Vet
+        run: go vet ./...
+
+      - name: Run Tests (Zero-CGO)
+        env:
+          CGO_ENABLED: '0'
+        run: go test -v ./...
+
+      - name: Build Binary
+        env:
+          CGO_ENABLED: '0'
+        run: go build -ldflags="-s -w" -o bin/iam-shrink ./cmd/iam-shrink
+
+      - name: Test CLI binary
+        run: |
+          ./bin/iam-shrink version
+          ./bin/iam-shrink explain s3:ListObjectsV2
