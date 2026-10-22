@@ -375,11 +375,14 @@
       <a class="btn" href="https://github.com/smford/iam-shrink/releases/tag/v0.6.0">
         Download Binary (<span id="release-version-number">0.6.0</span>)
       </a>
-      <a class="btn btn-secondary" href="https://github.com/smford/iam-shrink">
-        ⭐ Star on GitHub
+      <a class="btn btn-secondary" href="https://github.com/smford/iam-shrink/tree/main/docs/guides">
+        📖 In-Depth Guides
       </a>
       <a class="btn btn-secondary" href="https://github.com/smford/iam-shrink/tree/main/examples">
         Explore 7 Worked Examples
+      </a>
+      <a class="btn btn-secondary" href="https://github.com/smford/iam-shrink">
+        ⭐ Star on GitHub
       </a>
     </div>
   </header>
@@ -920,6 +923,104 @@ EOF</pre>
       </a>
     </div>
 
+    <!-- 10 IN-DEPTH DOCUMENTATION GUIDES -->
+    <h2 class="section-title">In-Depth Guides & Technical Documentation</h2>
+    <p class="section-desc">
+      Comprehensive step-by-step documentation, architecture deep-dives, enterprise runbooks, and CLI manuals:
+    </p>
+
+    <div class="card-grid" style="grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));">
+      <a class="example-card" href="https://github.com/smford/iam-shrink/blob/main/docs/guides/01-architecture-and-telemetry.md">
+        <div>
+          <span class="example-tag">GUIDE 01</span>
+          <h3>Architecture & Telemetry</h3>
+          <p>CSM loopback UDP vs. MITM Proxy, datagram schemas, ephemeral CA certificates, and session daemons.</p>
+        </div>
+        <div style="font-size:0.85rem; color:var(--accent);">Read Architecture Guide &rarr;</div>
+      </a>
+
+      <a class="example-card" href="https://github.com/smford/iam-shrink/blob/main/docs/guides/02-language-integrations.md">
+        <div>
+          <span class="example-tag">GUIDE 02</span>
+          <h3>Language Integrations</h3>
+          <p>Setup playbooks for Python (Boto3/pytest), Node.js (AWS SDK v3/Jest), Go, Java, and Docker Compose.</p>
+        </div>
+        <div style="font-size:0.85rem; color:var(--accent);">Read Language Playbooks &rarr;</div>
+      </a>
+
+      <a class="example-card" href="https://github.com/smford/iam-shrink/blob/main/docs/guides/03-terraform-and-opentofu.md">
+        <div>
+          <span class="example-tag">GUIDE 03</span>
+          <h3>Terraform & OpenTofu</h3>
+          <p>In-place HCL AST patching, automated backups, and resolving ARN placeholders via terraform.tfstate.</p>
+        </div>
+        <div style="font-size:0.85rem; color:var(--accent);">Read Terraform Guide &rarr;</div>
+      </a>
+
+      <a class="example-card" href="https://github.com/smford/iam-shrink/blob/main/docs/guides/04-legacy-role-pruning-runbook.md">
+        <div>
+          <span class="example-tag">GUIDE 04</span>
+          <h3>Legacy Role Pruning SOP</h3>
+          <p>Enterprise 6-phase standard operating procedure to safely prune 85%+ dead permissions with zero outages.</p>
+        </div>
+        <div style="font-size:0.85rem; color:var(--accent);">Read Pruning Runbook &rarr;</div>
+      </a>
+
+      <a class="example-card" href="https://github.com/smford/iam-shrink/blob/main/docs/guides/05-blast-radius-and-impact.md">
+        <div>
+          <span class="example-tag">GUIDE 05</span>
+          <h3>Blast Radius Analysis</h3>
+          <p>Replaying 90 days of CloudTrail traffic, calculating safety scores, and identifying severed calls.</p>
+        </div>
+        <div style="font-size:0.85rem; color:var(--accent);">Read Blast Radius Guide &rarr;</div>
+      </a>
+
+      <a class="example-card" href="https://github.com/smford/iam-shrink/blob/main/docs/guides/06-ci-cd-quality-gates.md">
+        <div>
+          <span class="example-tag">GUIDE 06</span>
+          <h3>CI/CD Quality Gates & PR Bot</h3>
+          <p>GitHub Actions composite workflow, blocking wildcards in CI, and automated PR review comment formatting.</p>
+        </div>
+        <div style="font-size:0.85rem; color:var(--accent);">Read CI/CD Guide &rarr;</div>
+      </a>
+
+      <a class="example-card" href="https://github.com/smford/iam-shrink/blob/main/docs/guides/07-multi-cloud-and-k8s.md">
+        <div>
+          <span class="example-tag">GUIDE 07</span>
+          <h3>Kubernetes IRSA & Multi-Cloud</h3>
+          <p>Pod telemetry sidecar manifests, GCP Custom Roles, Azure RBAC, and HashiCorp Vault dynamic roles.</p>
+        </div>
+        <div style="font-size:0.85rem; color:var(--accent);">Read Multi-Cloud Guide &rarr;</div>
+      </a>
+
+      <a class="example-card" href="https://github.com/smford/iam-shrink/blob/main/docs/guides/08-compliance-benchmarks.md">
+        <div>
+          <span class="example-tag">GUIDE 08</span>
+          <h3>Compliance (CIS & NIST)</h3>
+          <p>Auditing against CIS AWS Benchmark v3.0 and NIST SP 800-53 Rev 5 with weekly automated rule updates.</p>
+        </div>
+        <div style="font-size:0.85rem; color:var(--accent);">Read Compliance Guide &rarr;</div>
+      </a>
+
+      <a class="example-card" href="https://github.com/smford/iam-shrink/blob/main/docs/guides/09-troubleshooting-and-faq.md">
+        <div>
+          <span class="example-tag">GUIDE 09</span>
+          <h3>Troubleshooting & FAQ</h3>
+          <p>Solutions for 0 calls captured, proxy SSL certificates, wildcard resources, and Docker networking.</p>
+        </div>
+        <div style="font-size:0.85rem; color:var(--accent);">Read Troubleshooting &rarr;</div>
+      </a>
+
+      <a class="example-card" href="https://github.com/smford/iam-shrink/blob/main/docs/reference/cli-reference.md">
+        <div>
+          <span class="example-tag">REFERENCE</span>
+          <h3>CLI Command Reference</h3>
+          <p>Exhaustive flag-by-flag manual and syntax guide covering all 20 subcommands and global parameters.</p>
+        </div>
+        <div style="font-size:0.85rem; color:var(--accent);">View Full CLI Manual &rarr;</div>
+      </a>
+    </div>
+
     <!-- QUICKSTART PER STACK -->
     <h2 class="section-title">Quickstart by Runtime</h2>
     <p class="section-desc">Run with your existing testing framework in one line:</p>
@@ -966,7 +1067,9 @@ docker run --rm -v $(pwd):/workspace -w /workspace \
     <p>Released under the MIT License • Built with zero-CGO for Linux, macOS, and Windows.</p>
     <p style="margin-top: 8px;">
       <a href="https://github.com/smford/iam-shrink" style="color:var(--accent); text-decoration:none;">GitHub Repository</a> •
-      <a href="https://github.com/smford/iam-shrink/tree/main/examples" style="color:var(--accent); text-decoration:none;">Examples</a> •
+      <a href="https://github.com/smford/iam-shrink/tree/main/docs/guides" style="color:var(--accent); text-decoration:none;">In-Depth Guides</a> •
+      <a href="https://github.com/smford/iam-shrink/blob/main/docs/reference/cli-reference.md" style="color:var(--accent); text-decoration:none;">CLI Manual</a> •
+      <a href="https://github.com/smford/iam-shrink/tree/main/examples" style="color:var(--accent); text-decoration:none;">7 Worked Examples</a> •
       <a href="https://github.com/smford/iam-shrink/releases" style="color:var(--accent); text-decoration:none;">Releases</a>
     </p>
   </footer>

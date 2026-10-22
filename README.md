@@ -178,6 +178,25 @@ Check out the runnable tutorials in the [`examples/`](examples/) directory. Ever
 
 ---
 
+## In-Depth Documentation Guides
+
+Explore deep-dive technical guides, architecture explanations, and enterprise runbooks:
+
+| Guide | Description |
+|---|---|
+| [**01. Architecture & Telemetry Deep-Dive**](docs/guides/01-architecture-and-telemetry.md) | How CSM loopback UDP works vs. ephemeral MITM proxying, datagram schemas, and daemon modes. |
+| [**02. Language & SDK Integration Playbooks**](docs/guides/02-language-integrations.md) | Setup and configuration recipes for Python (Boto3/pytest), Node.js (AWS SDK v3), Go, Java, and Docker. |
+| [**03. Terraform & OpenTofu Workflow**](docs/guides/03-terraform-and-opentofu.md) | In-place `.tf` AST patching, automated backups, and resolving ARNs via `terraform.tfstate`. |
+| [**04. Enterprise Legacy Role Pruning Runbook**](docs/guides/04-legacy-role-pruning-runbook.md) | Battle-tested 6-phase standard operating procedure (SOP) to safely prune 85%+ dead permissions. |
+| [**05. Blast Radius & Impact Analysis**](docs/guides/05-blast-radius-and-impact.md) | How the safety scoring algorithm works, replaying 90 days of CloudTrail, and detecting severed calls. |
+| [**06. CI/CD Quality Gates & PR Automation**](docs/guides/06-ci-cd-quality-gates.md) | GitHub Actions composite workflow, blocking wildcards in CI, and automated PR review comment formatting. |
+| [**07. Kubernetes IRSA & Multi-Cloud**](docs/guides/07-multi-cloud-and-k8s.md) | Pod telemetry sidecar manifests, GCP Custom Roles, Azure RBAC, and HashiCorp Vault dynamic roles. |
+| [**08. Compliance Benchmarks (CIS & NIST)**](docs/guides/08-compliance-benchmarks.md) | Automated auditing against CIS AWS Foundations Benchmark v3.0 and NIST SP 800-53 Rev 5. |
+| [**09. Troubleshooting & FAQ**](docs/guides/09-troubleshooting-and-faq.md) | Solutions for 0 calls captured, proxy SSL certificates, wildcard resources, and Docker networking. |
+| [**Full CLI Command & Flag Manual**](docs/reference/cli-reference.md) | Complete flag-by-flag manual and syntax guide covering all 20 subcommands and global parameters. |
+
+---
+
 ## Complete Feature Guide
 
 ### 1. Dual Interception Engine (CSM & MITM Proxy)
