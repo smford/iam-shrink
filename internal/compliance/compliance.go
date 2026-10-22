@@ -37,13 +37,13 @@ type Rule struct {
 
 // EvaluationResult records the outcome of a rule check.
 type EvaluationResult struct {
-	RuleID      string `json:"rule_id"`
-	ControlID   string `json:"control_id"`
-	Title       string `json:"title"`
-	Severity    string `json:"severity"`
-	Passed      bool   `json:"passed"`
+	RuleID      string   `json:"rule_id"`
+	ControlID   string   `json:"control_id"`
+	Title       string   `json:"title"`
+	Severity    string   `json:"severity"`
+	Passed      bool     `json:"passed"`
 	Violations  []string `json:"violations,omitempty"`
-	Remediation string `json:"remediation,omitempty"`
+	Remediation string   `json:"remediation,omitempty"`
 }
 
 // Report aggregates compliance findings across evaluated standards.

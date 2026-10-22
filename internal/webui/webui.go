@@ -37,6 +37,7 @@ func NewServer(port int, items []render.ActionItem) (*Server, error) {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", s.handleIndex)
+	mux.HandleFunc("/healthz", s.handleHealthz)
 	mux.HandleFunc("/api/policy", s.handlePolicyAPI)
 	mux.HandleFunc("/api/render", s.handleRenderAPI)
 
@@ -68,6 +69,12 @@ func (s *Server) Stop() {
 func (s *Server) handleIndex(w http.ResponseWriter, req *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_, _ = w.Write([]byte(htmlTemplate))
+}
+
+func (s *Server) handleHealthz(w http.ResponseWriter, req *http.Request) {
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte("OK\n"))
 }
 
 func (s *Server) handlePolicyAPI(w http.ResponseWriter, req *http.Request) {

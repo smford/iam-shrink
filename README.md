@@ -8,7 +8,7 @@
 
 ## 💡 What is iam-shrink? (In Simple Terms)
 
-When developers write code that talks to AWS (like reading from an S3 bucket or saving to DynamoDB), they usually do not know the exact list of obscure AWS IAM action names and ARNs required. 
+When developers write code that talks to AWS (like reading from an S3 bucket or saving to DynamoDB), they usually do not know the exact list of obscure AWS IAM action names and ARNs required.
 
 Because getting "Access Denied" errors slows down development, developers and teams routinely slap on `AdministratorAccess` or broad wildcard policies (`Action: "*", Resource: "*"`). These over-privileged policies make it into staging and production, exposing organizations to massive data breaches, privilege escalation, and compliance audit failures.
 

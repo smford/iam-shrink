@@ -47,14 +47,14 @@ func (e Event) IsFailed() bool {
 
 // Collector listens on a UDP socket for incoming AWS CSM packets.
 type Collector struct {
-	conn       *net.UDPConn
-	port       int
-	eventsMu   sync.Mutex
-	events     []Event
-	stopCh     chan struct{}
-	drainDone  chan struct{}
-	running    bool
-	wg         sync.WaitGroup
+	conn      *net.UDPConn
+	port      int
+	eventsMu  sync.Mutex
+	events    []Event
+	stopCh    chan struct{}
+	drainDone chan struct{}
+	running   bool
+	wg        sync.WaitGroup
 }
 
 // NewCollector creates and binds a UDP listener on 127.0.0.1:<random_port>.

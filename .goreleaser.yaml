@@ -20,36 +20,26 @@ builds:
       - amd64
       - arm64
     ldflags:
-      - -s -w -X main.version={{.Version}}
+      - -s -w
+      - -X main.version={{.Version}}
 
 archives:
   - id: default
-    builds:
-      - iam-shrink
-    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
-    format: tar.gz
+    formats:
+      - tar.gz
     format_overrides:
       - goos: windows
-        format: zip
+        formats:
+          - zip
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
     files:
       - README.md
       - LICENSE*
       - action.yml
 
 checksum:
-  name_template: "checksums.txt"
-
-brews:
-  - repository:
-      owner: smford
-      name: homebrew-tap
-      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
-    homepage: "https://github.com/smford/iam-shrink"
-    description: "Local-to-Least-Privilege AWS IAM Policy Generator"
-    license: "MIT"
-    commit_author:
-      name: github-actions[bot]
-      email: github-actions[bot]@users.noreply.github.com
+  name_template: 'checksums.txt'
 
 changelog:
   sort: asc
@@ -59,3 +49,11 @@ changelog:
       - '^test:'
       - Merge pull request
       - Merge branch
+
+release:
+  github:
+    owner: smford
+    name: iam-shrink
+  draft: false
+  prerelease: auto
+  mode: replace

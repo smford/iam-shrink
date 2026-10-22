@@ -95,7 +95,7 @@ func ExportToFile(path string, events []csm.Event) error {
 		ResourceSpans: []ResourceSpan{
 			{
 				Resource: map[string]string{
-					"service.name": "iam-shrink",
+					"service.name":       "iam-shrink",
 					"telemetry.sdk.name": "iam-shrink-csm",
 				},
 				Spans: spans,
