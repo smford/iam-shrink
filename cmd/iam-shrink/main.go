@@ -35,13 +35,15 @@ import (
 )
 
 var (
-	version    = "0.5.0"
+	version    = "0.6.0"
 	license    = "MIT"
 	repository = "https://github.com/smford/iam-shrink"
 )
 
 func printUsage() {
-	fmt.Fprintf(os.Stderr, `iam-shrink - Local-to-Least-Privilege AWS IAM Policy Generator
+	fmt.Fprintf(os.Stderr, `iam-shrink %s - Local-to-Least-Privilege AWS IAM Policy Generator
+Repository: %s
+License:    %s (%s/blob/main/LICENSE)
 
 Usage:
   iam-shrink run [flags] -- <command> [args...]
@@ -127,7 +129,7 @@ Repository:
 
 License:
   MIT (https://github.com/smford/iam-shrink/blob/main/LICENSE)
-`)
+`, version, repository, license, repository)
 }
 
 func parseFlagsAndPosArgs(fs *flag.FlagSet, args []string) ([]string, error) {

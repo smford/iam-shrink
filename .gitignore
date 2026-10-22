@@ -9,6 +9,7 @@ bin/
 # Test artifacts
 *.test
 *.out
+*.bak
 
 # OS files
 .DS_Store

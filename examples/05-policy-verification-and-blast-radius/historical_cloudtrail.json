@@ -1,0 +1,39 @@
+{
+  "Records": [
+    {
+      "eventVersion": "1.08",
+      "eventTime": "2026-10-22T00:01:00Z",
+      "eventSource": "s3.amazonaws.com",
+      "eventName": "GetObject",
+      "awsRegion": "us-east-1"
+    },
+    {
+      "eventVersion": "1.08",
+      "eventTime": "2026-10-22T00:02:00Z",
+      "eventSource": "s3.amazonaws.com",
+      "eventName": "PutObject",
+      "awsRegion": "us-east-1"
+    },
+    {
+      "eventVersion": "1.08",
+      "eventTime": "2026-10-22T00:03:00Z",
+      "eventSource": "dynamodb.amazonaws.com",
+      "eventName": "GetItem",
+      "awsRegion": "us-east-1"
+    },
+    {
+      "eventVersion": "1.08",
+      "eventTime": "2026-10-22T00:04:00Z",
+      "eventSource": "kms.amazonaws.com",
+      "eventName": "Decrypt",
+      "awsRegion": "us-east-1"
+    },
+    {
+      "eventVersion": "1.08",
+      "eventTime": "2026-10-22T00:05:00Z",
+      "eventSource": "s3.amazonaws.com",
+      "eventName": "DeleteBucket",
+      "awsRegion": "us-east-1"
+    }
+  ]
+}

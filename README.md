@@ -59,6 +59,20 @@ go install github.com/smford/iam-shrink/cmd/iam-shrink@latest
 
 ---
 
+## Interactive Examples & Tutorials
+
+Check out the runnable tutorials in the [`examples/`](examples/) directory to learn how to use `iam-shrink` in practice:
+
+| Tutorial | Description | Run Script |
+|---|---|---|
+| [**01. Local Test Suite Telemetry**](examples/01-local-test-runner/) | Run your test suite to capture IAM calls and synthesize JSON, Terraform, or CDK policies. | `./examples/01-local-test-runner/run.sh` |
+| [**02. CloudTrail Log Ingestion**](examples/02-cloudtrail-ingest/) | Synthesize least-privilege policies directly from historical `.json` or `.json.gz` logs. | `./examples/02-cloudtrail-ingest/run.sh` |
+| [**03. In-Place Terraform Patching**](examples/03-terraform-patching/) | Replace wildcard policies in `.tf` files in-place with automatic `.bak` backups. | `./examples/03-terraform-patching/run.sh` |
+| [**04. CI/CD Security Quality Gate**](examples/04-ci-cd-quality-gate/) | Block wildcard policies in pipelines, run security linters, and generate PR comments. | `./examples/04-ci-cd-quality-gate/run.sh` |
+| [**05. Verification & Blast Radius**](examples/05-policy-verification-and-blast-radius/) | Prove policy subset boundaries and assess operational risk against real traffic. | `./examples/05-policy-verification-and-blast-radius/run.sh` |
+
+---
+
 ## Complete Feature Guide & Problem Explanations
 
 Each feature in `iam-shrink` was built to solve a specific, real-world security or operational problem:

@@ -1,0 +1,93 @@
+{
+  "Records": [
+    {
+      "eventVersion": "1.08",
+      "userIdentity": {
+        "type": "AssumedRole",
+        "principalId": "AROAEXAMPLE:app-worker",
+        "arn": "arn:aws:sts::123456789012:assumed-role/production-worker/app-worker"
+      },
+      "eventTime": "2026-10-22T00:15:30Z",
+      "eventSource": "s3.amazonaws.com",
+      "eventName": "GetObject",
+      "awsRegion": "us-east-1",
+      "requestParameters": {
+        "bucketName": "production-data-lake-bucket",
+        "key": "reports/2026/financial_q3.csv"
+      },
+      "resources": [
+        {
+          "ARN": "arn:aws:s3:::production-data-lake-bucket/reports/2026/financial_q3.csv",
+          "accountId": "123456789012",
+          "type": "AWS::S3::Object"
+        }
+      ]
+    },
+    {
+      "eventVersion": "1.08",
+      "userIdentity": {
+        "type": "AssumedRole",
+        "principalId": "AROAEXAMPLE:app-worker",
+        "arn": "arn:aws:sts::123456789012:assumed-role/production-worker/app-worker"
+      },
+      "eventTime": "2026-10-22T00:16:02Z",
+      "eventSource": "dynamodb.amazonaws.com",
+      "eventName": "GetItem",
+      "awsRegion": "us-east-1",
+      "requestParameters": {
+        "tableName": "CustomerAuditLogs"
+      },
+      "resources": [
+        {
+          "ARN": "arn:aws:dynamodb:us-east-1:123456789012:table/CustomerAuditLogs",
+          "accountId": "123456789012",
+          "type": "AWS::DynamoDB::Table"
+        }
+      ]
+    },
+    {
+      "eventVersion": "1.08",
+      "userIdentity": {
+        "type": "AssumedRole",
+        "principalId": "AROAEXAMPLE:app-worker",
+        "arn": "arn:aws:sts::123456789012:assumed-role/production-worker/app-worker"
+      },
+      "eventTime": "2026-10-22T00:16:45Z",
+      "eventSource": "kms.amazonaws.com",
+      "eventName": "Decrypt",
+      "awsRegion": "us-east-1",
+      "requestParameters": {
+        "keyId": "arn:aws:kms:us-east-1:123456789012:key/b638f291-729a-4c92-b883-937210bcdef0"
+      },
+      "resources": [
+        {
+          "ARN": "arn:aws:kms:us-east-1:123456789012:key/b638f291-729a-4c92-b883-937210bcdef0",
+          "accountId": "123456789012",
+          "type": "AWS::KMS::Key"
+        }
+      ]
+    },
+    {
+      "eventVersion": "1.08",
+      "userIdentity": {
+        "type": "AssumedRole",
+        "principalId": "AROAEXAMPLE:app-worker",
+        "arn": "arn:aws:sts::123456789012:assumed-role/production-worker/app-worker"
+      },
+      "eventTime": "2026-10-22T00:17:10Z",
+      "eventSource": "sqs.amazonaws.com",
+      "eventName": "SendMessage",
+      "awsRegion": "us-east-1",
+      "requestParameters": {
+        "queueUrl": "https://sqs.us-east-1.amazonaws.com/123456789012/order-processing-queue"
+      },
+      "resources": [
+        {
+          "ARN": "arn:aws:sqs:us-east-1:123456789012:order-processing-queue",
+          "accountId": "123456789012",
+          "type": "AWS::SQS::Queue"
+        }
+      ]
+    }
+  ]
+}
