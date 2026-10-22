@@ -1,3 +1,10 @@
+---
+title: Language & SDK Integration Playbooks
+description: Language & SDK Integration Playbooks for iam-shrink
+---
+
+[← Documentation Hub](../index.md)
+
 # Language & SDK Integration Playbooks
 
 This guide provides practical setup instructions, code snippets, and configuration tips for running `iam-shrink` across **Python**, **Node.js/TypeScript**, **Go**, **Java**, and **Dockerized environments**.
@@ -190,3 +197,7 @@ docker compose down
 iam-shrink session dump --format=tf --strict-arns --out=microservices_iam.tf
 iam-shrink session stop
 ```
+
+---
+
+**Navigation:** [← Previous: Home](../index.md) | [Next: Terraform & OpenTofu Workflow →](03-terraform-and-opentofu.md)

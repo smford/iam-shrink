@@ -1,3 +1,10 @@
+---
+title: Operational Blast Radius & Impact Analysis
+description: Operational Blast Radius & Impact Analysis for iam-shrink
+---
+
+[← Documentation Hub](../index.md)
+
 # Operational Blast Radius & Blast Impact Analysis
 
 This guide explains how `iam-shrink impact` evaluates proposed IAM policies against real historical AWS CloudTrail audit logs to quantify operational risk, identify severed operations, and prevent production outages.
@@ -82,3 +89,7 @@ iam-shrink impact --min-score=99.5 /var/log/cloudtrail/ candidate_policy.json
 # Fail CI build if any call is severed
 iam-shrink impact --fail-on-severed /var/log/cloudtrail/ candidate_policy.json
 ```
+
+---
+
+**Navigation:** [← Previous: Legacy Role Pruning SOP](04-legacy-role-pruning-runbook.md) | [Next: CI/CD Quality Gates & PR Bot →](06-ci-cd-quality-gates.md)

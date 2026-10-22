@@ -1,3 +1,10 @@
+---
+title: Architecture & Telemetry Deep-Dive
+description: Architecture & Telemetry Deep-Dive for iam-shrink
+---
+
+[← Documentation Hub](../index.md)
+
 # Architecture & Telemetry Deep-Dive
 
 This guide explains the inner workings of `iam-shrink`'s telemetry engine, the difference between **Client-Side Monitoring (CSM)** and the **Interception Proxy**, and how `iam-shrink` synthesizes production-ready security policies with zero cloud credentials.
@@ -134,3 +141,7 @@ iam-shrink session stop
 | **Exact Resource ARNs** | Parameterized (`${var.x}`) | ✅ Concrete ARNs | ✅ Concrete ARNs | Parameterized |
 | **Multi-Process / Container Support** | Single command | Single command | Batch log files | ✅ Distributed |
 | **Execution Speed** | Instant (<0.2s) | Instant (<0.3s) | Instant (Log parse) | Continuous |
+
+---
+
+**Navigation:** [← Previous: Compliance Benchmarks](08-compliance-benchmarks.md) | [Next: Troubleshooting & FAQ →](09-troubleshooting-and-faq.md)

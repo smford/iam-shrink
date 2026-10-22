@@ -1,3 +1,10 @@
+---
+title: Compliance Benchmarks & Auditing (CIS & NIST)
+description: Compliance Benchmarks & Auditing (CIS & NIST) for iam-shrink
+---
+
+[← Documentation Hub](../index.md)
+
 # Compliance Benchmarks & Auditing (CIS & NIST)
 
 This guide covers `iam-shrink`'s built-in compliance engine, supporting automated auditing against the **Center for Internet Security (CIS) AWS Foundations Benchmark v3.0** and **NIST SP 800-53 Rev 5**.
@@ -68,3 +75,7 @@ AWS frequently introduces new APIs, and benchmark bodies periodically release re
 
 * **Locally:** Run `iam-shrink update-rules` to download the latest vetted rule schemas directly into `~/.iam-shrink/rules/`.
 * **Automated CI Sync:** The repository maintains an automated GitHub Action workflow (`compliance-sync.yml`) that runs weekly, parsing upstream catalogs and keeping the embedded rule definitions up-to-date.
+
+---
+
+**Navigation:** [← Previous: CI/CD Quality Gates](06-ci-cd-quality-gates.md) | [Next: Architecture & Telemetry →](01-architecture-and-telemetry.md)

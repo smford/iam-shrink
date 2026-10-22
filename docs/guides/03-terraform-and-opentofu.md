@@ -1,3 +1,10 @@
+---
+title: Terraform & OpenTofu Workflow Guide
+description: Terraform & OpenTofu Workflow Guide for iam-shrink
+---
+
+[← Documentation Hub](../index.md)
+
 # Terraform & OpenTofu Workflow Guide
 
 This guide covers how to integrate `iam-shrink` directly into your Terraform and OpenTofu infrastructure-as-code workflows, including **in-place `.tf` file patching** and **runtime ARN resolution via `terraform.tfstate`**.
@@ -124,3 +131,7 @@ iam-shrink run --format=tf --strict-arns -- tofu plan
 ```
 
 This creates an exact CI/CD deployment execution role policy containing only the AWS actions Terraform needs to manage your specific resources.
+
+---
+
+**Navigation:** [← Previous: Language & SDK Playbooks](02-language-integrations.md) | [Next: Kubernetes IRSA & Multi-Cloud →](07-multi-cloud-and-k8s.md)

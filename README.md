@@ -14,6 +14,9 @@
   <a href="https://smford.github.io/iam-shrink/"><img src="https://img.shields.io/badge/docs-GitHub%20Pages-informational" alt="Docs"></a>
 </p>
 
+> 📚 **Interactive Documentation Portal**: Visit [**smford.github.io/iam-shrink**](https://smford.github.io/iam-shrink/) for instant search, interactive architecture diagrams, language playbooks, and dark mode reading powered by [`md-web-renderer`](https://github.com/smford/md-web-renderer).
+> You can also browse the [Documentation Hub on GitHub](docs/README.md).
+
 ---
 
 ## What is iam-shrink? (In Simple Terms)

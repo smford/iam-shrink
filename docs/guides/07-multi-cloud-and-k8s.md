@@ -1,3 +1,10 @@
+---
+title: Kubernetes IRSA & Multi-Cloud Policy Translation
+description: Kubernetes IRSA & Multi-Cloud Policy Translation for iam-shrink
+---
+
+[← Documentation Hub](../index.md)
+
 # Kubernetes IRSA & Multi-Cloud Policy Translation
 
 This guide explains how `iam-shrink` connects AWS IAM with modern cloud-native infrastructures:
@@ -160,3 +167,7 @@ vault write aws/roles/least-privilege-app \
 }
 EOF
 ```
+
+---
+
+**Navigation:** [← Previous: Terraform & OpenTofu](03-terraform-and-opentofu.md) | [Next: Legacy Role Pruning SOP →](04-legacy-role-pruning-runbook.md)

@@ -1,3 +1,10 @@
+---
+title: CI/CD Security Quality Gates & PR Automation
+description: CI/CD Security Quality Gates & PR Automation for iam-shrink
+---
+
+[← Documentation Hub](../index.md)
+
 # CI/CD Security Quality Gates & PR Automation
 
 This guide demonstrates how to integrate `iam-shrink` into GitHub Actions, GitLab CI, and other continuous integration pipelines to **block wildcard policies**, **enforce compliance benchmarks**, and **post automated PR review comments**.
@@ -128,3 +135,7 @@ iam-gate:
     - iam-shrink gate --fail-on-wildcard candidate_policy.json
     - iam-shrink report --standard=cis candidate_policy.json
 ```
+
+---
+
+**Navigation:** [← Previous: Blast Radius Analysis](05-blast-radius-and-impact.md) | [Next: Compliance Benchmarks →](08-compliance-benchmarks.md)

@@ -1,3 +1,10 @@
+---
+title: CLI Command & Configuration Reference
+description: CLI Command & Configuration Reference for iam-shrink
+---
+
+[← Documentation Hub](../index.md)
+
 # CLI Command & Configuration Reference
 
 This document provides a complete reference for all `iam-shrink` subcommands, flags, and configuration options.
@@ -279,3 +286,7 @@ Starts the local interactive single-page web visualizer on `127.0.0.1`.
 ```bash
 iam-shrink ui [--port=8080] [policy.json]
 ```
+
+---
+
+**Navigation:** [← Previous: Troubleshooting & FAQ](../guides/09-troubleshooting-and-faq.md) | [Next: Documentation Home →](../index.md)

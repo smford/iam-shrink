@@ -1,3 +1,10 @@
+---
+title: Enterprise Legacy Role Pruning Runbook
+description: Enterprise Legacy Role Pruning Runbook for iam-shrink
+---
+
+[← Documentation Hub](../index.md)
+
 # Enterprise Legacy Role Pruning Runbook
 
 This runbook provides a battle-tested, standard operating procedure (SOP) for infrastructure and security teams to safely prune bloated, overprivileged AWS IAM roles.
@@ -122,3 +129,7 @@ iam-shrink optimize --out=final_policy.json candidate_shrunk_role.json
    | stats count(*) by eventName
    ```
 3. Apply to production via Terraform or OpenTofu.
+
+---
+
+**Navigation:** [← Previous: Kubernetes & Multi-Cloud](07-multi-cloud-and-k8s.md) | [Next: Blast Radius Analysis →](05-blast-radius-and-impact.md)

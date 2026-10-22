@@ -1,3 +1,10 @@
+---
+title: Troubleshooting & Frequently Asked Questions (FAQ)
+description: Troubleshooting & Frequently Asked Questions (FAQ) for iam-shrink
+---
+
+[← Documentation Hub](../index.md)
+
 # Troubleshooting & Frequently Asked Questions (FAQ)
 
 This guide covers common issues, edge cases, and debugging techniques when using `iam-shrink`.
@@ -75,7 +82,7 @@ If your runtime or HTTP client ignores standard SSL environment variables (e.g. 
 ## 4. What about Failed API Calls (e.g. 403 Forbidden)?
 
 ### Default Behavior:
-By default, `iam-shrink` **includes failed calls** (`--include-failed=true`). 
+By default, `iam-shrink` **includes failed calls** (`--include-failed=true`).
 
 *Why?* Developers often write unit tests to verify failure cases (e.g. checking that an unauthorized user gets a 403). Excluding failed calls would omit the exact permissions required by your application during normal runs.
 
@@ -127,3 +134,7 @@ iam-shrink optimize --check policy.json
 # Compress policy (typically saves 30-50% in byte size)
 iam-shrink optimize --out=compressed_policy.json policy.json
 ```
+
+---
+
+**Navigation:** [← Previous: Architecture & Telemetry](01-architecture-and-telemetry.md) | [Next: CLI Command Reference →](../reference/cli-reference.md)
