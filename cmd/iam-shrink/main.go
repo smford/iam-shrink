@@ -35,7 +35,9 @@ import (
 )
 
 var (
-	version = "0.5.0"
+	version    = "0.5.0"
+	license    = "MIT"
+	repository = "https://github.com/smford/iam-shrink"
 )
 
 func printUsage() {
@@ -62,6 +64,7 @@ Usage:
   iam-shrink k8s manifest [flags]
   iam-shrink init-vscode [flags]
   iam-shrink session <start|status|dump|stop> [flags]
+  iam-shrink license
   iam-shrink version
 
 Commands:
@@ -85,7 +88,8 @@ Commands:
   k8s              Generate Kubernetes IRSA and pod telemetry manifests
   init-vscode      Generate .vscode/tasks.json configuring iam-shrink for test suites
   session          Manage a standalone background daemon session
-  version          Show version information
+  license          Show license information and repository link
+  version          Show version, license, and repository information
 
 Flags for 'run':
   --format string           Output format: json, tf, cdk, cdktf, pulumi, cfn, sso, gcp, azure, k8s-rbac, vault (default "json")
@@ -117,6 +121,12 @@ Examples:
   iam-shrink state terraform.tfstate policy.json
   iam-shrink gate --fail-on-wildcard policy.json
   iam-shrink pr-comment --existing=base_role.json --captured=new_policy.json --standard=cis
+
+Repository:
+  https://github.com/smford/iam-shrink
+
+License:
+  MIT (https://github.com/smford/iam-shrink/blob/main/LICENSE)
 `)
 }
 
@@ -198,8 +208,15 @@ func main() {
 		handleInitVSCode(os.Args[2:])
 	case "session":
 		handleSession(os.Args[2:])
+	case "license", "--license":
+		fmt.Printf("iam-shrink is licensed under the %s License.\n", license)
+		fmt.Printf("License:    %s/blob/main/LICENSE\n", repository)
+		fmt.Printf("Repository: %s\n", repository)
+		os.Exit(0)
 	case "version", "--version", "-v":
 		fmt.Printf("iam-shrink version %s\n", version)
+		fmt.Printf("License:    %s (%s/blob/main/LICENSE)\n", license, repository)
+		fmt.Printf("Repository: %s\n", repository)
 		os.Exit(0)
 	case "help", "--help", "-h":
 		printUsage()

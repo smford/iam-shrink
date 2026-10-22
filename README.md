@@ -6,7 +6,7 @@
 
 ---
 
-## 💡 What is iam-shrink? (In Simple Terms)
+## What is iam-shrink? (In Simple Terms)
 
 When developers write code that talks to AWS (like reading from an S3 bucket or saving to DynamoDB), they usually do not know the exact list of obscure AWS IAM action names and ARNs required.
 
@@ -18,7 +18,7 @@ It acts like a transparent observer. When you run your existing test suite (e.g.
 
 ---
 
-## 🎯 The Core Problems iam-shrink Solves
+## The Core Problems iam-shrink Solves
 
 | The Problem | How iam-shrink Solves It |
 |---|---|
@@ -31,7 +31,7 @@ It acts like a transparent observer. When you run your existing test suite (e.g.
 
 ---
 
-## 🚀 Installation
+## Installation
 
 ### Via Homebrew (macOS & Linux)
 ```bash
@@ -59,7 +59,7 @@ go install github.com/smford/iam-shrink/cmd/iam-shrink@latest
 
 ---
 
-## 🛠️ Complete Feature Guide & Problem Explanations
+## Complete Feature Guide & Problem Explanations
 
 Each feature in `iam-shrink` was built to solve a specific, real-world security or operational problem:
 
@@ -292,7 +292,7 @@ iam-shrink session stop
 
 ---
 
-## 💻 CLI Command Reference
+## CLI Command Reference
 
 ```text
 Usage:
@@ -316,12 +316,13 @@ Usage:
   iam-shrink k8s manifest [flags]
   iam-shrink init-vscode [flags]
   iam-shrink session <start|status|dump|stop> [flags]
+  iam-shrink license
   iam-shrink version
 ```
 
 ---
 
-## 🧪 Development & Testing
+## Development & Testing
 
 ```bash
 # Run all unit and integration tests (zero-CGO)
@@ -336,6 +337,6 @@ make build
 
 ---
 
-## 📄 License
+## License
 
 MIT License. See [LICENSE](LICENSE) for details.
