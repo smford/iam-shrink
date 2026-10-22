@@ -1,0 +1,111 @@
+name: SemVer Release Tagger
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      bump_type:
+        description: 'Manual bump override (auto, major, minor, patch)'
+        required: false
+        default: 'auto'
+        type: choice
+        options:
+          - auto
+          - patch
+          - minor
+          - major
+      dry_run:
+        description: 'Dry run (do not create or push tag)'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+jobs:
+  semver-tag:
+    name: Calculate and Tag SemVer Release
+    runs-on: ubuntu-latest
+    if: |
+      !contains(github.event.head_commit.message, '[skip release]') &&
+      !contains(github.event.head_commit.message, '[skip ci]') &&
+      github.actor != 'dependabot[bot]'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+
+      - name: Determine Next SemVer Version
+        id: semver
+        run: |
+          git fetch --tags
+          latest=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.5.0")
+          v=${latest#v}
+          major=$(echo "$v" | cut -d. -f1)
+          minor=$(echo "$v" | cut -d. -f2)
+          patch=$(echo "$v" | cut -d. -f3)
+
+          echo "Current baseline tag: $latest"
+
+          # Determine bump type
+          BUMP="${{ inputs.bump_type || 'auto' }}"
+
+          if [ "$BUMP" = "auto" ]; then
+            # Inspect commits since latest tag
+            if [ "$latest" != "v0.0.0" ] && git rev-parse "$latest" >/dev/null 2>&1; then
+              commits=$(git log "${latest}..HEAD" --pretty=format:"%s%n%b")
+            else
+              commits=$(git log -n 25 --pretty=format:"%s%n%b")
+            fi
+
+            if echo "$commits" | grep -E "(BREAKING CHANGE:|^[a-z]+!:)"; then
+              BUMP="major"
+            elif echo "$commits" | grep -E "^feat(\([a-z0-9_-]+\))?:"; then
+              BUMP="minor"
+            elif echo "$commits" | grep -E "^(fix|perf)(\([a-z0-9_-]+\))?:"; then
+              BUMP="patch"
+            else
+              BUMP="none"
+            fi
+          fi
+
+          echo "Determined bump type: $BUMP"
+
+          case "$BUMP" in
+            major)
+              next_tag="v$((major + 1)).0.0"
+              ;;
+            minor)
+              next_tag="v${major}.$((minor + 1)).0"
+              ;;
+            patch)
+              next_tag="v${major}.${minor}.$((patch + 1))"
+              ;;
+            *)
+              next_tag=""
+              ;;
+          esac
+
+          if [ -n "$next_tag" ]; then
+            echo "Calculated next release tag: $next_tag"
+            echo "new_tag=$next_tag" >> "$GITHUB_OUTPUT"
+            echo "should_tag=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "No semantic release required for this commit set."
+            echo "should_tag=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create and Push Git Tag
+        if: steps.semver.outputs.should_tag == 'true' && (inputs.dry_run != true)
+        run: |
+          tag="${{ steps.semver.outputs.new_tag }}"
+          echo "Tagging release $tag..."
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "$tag" -m "Release $tag: Automated semantic release"
+          git push origin "$tag"
+          echo "Successfully pushed tag $tag to origin (triggers release workflow)"
