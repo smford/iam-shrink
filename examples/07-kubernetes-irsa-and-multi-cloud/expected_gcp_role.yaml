@@ -1,0 +1,8 @@
+title: iam_shrink_least_privilege_role
+description: Least-privilege role synthesized by iam-shrink
+stage: GA
+includedPermissions:
+    - cloudkms.cryptoKeyVersions.useToDecrypt
+    - spanner.databases.read
+    - storage.objects.get
+    - storage.objects.list

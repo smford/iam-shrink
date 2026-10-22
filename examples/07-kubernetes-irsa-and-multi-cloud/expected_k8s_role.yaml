@@ -1,0 +1,19 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: iam-shrink-least-privilege
+  namespace: default
+rules:
+  - apiGroups: [""]
+    resources: ["s3"]
+    verbs:
+      - "get"
+      - "list"
+  - apiGroups: [""]
+    resources: ["dynamodb"]
+    verbs:
+      - "get"
+  - apiGroups: [""]
+    resources: ["kms"]
+    verbs:
+      - "get"

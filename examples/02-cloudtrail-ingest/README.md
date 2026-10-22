@@ -1,52 +1,43 @@
-# Example 02: Synthesizing Least-Privilege Policies from CloudTrail
+# Example 02: CloudTrail Log Ingestion
 
-This example demonstrates how `iam-shrink` processes AWS CloudTrail event logs (both uncompressed `.json` and gzip-compressed `.json.gz`) to synthesize an exact, least-privilege IAM policy based on actual historical API calls and resource ARNs.
-
----
-
-## The Problem
-
-Many production workloads have been running for years with broad, historical IAM roles (e.g. `AdministratorAccess` or wildcard `s3:*`).
-- Security audits demand tightening these roles to least privilege.
-- Engineering teams fear that manually stripping permissions will break production systems unexpectedly.
-- Manually reading through millions of CloudTrail JSON lines to construct a JSON or Terraform policy is tedious, slow, and error-prone.
+This worked example demonstrates how `iam-shrink` processes historical AWS CloudTrail audit logs (`.json` or `.json.gz`) to automatically synthesize least-privilege policies based on real observed production traffic.
 
 ---
 
-## How iam-shrink Solves It
+## What This Example Contains
 
-The `iam-shrink ingest` command:
-1. Ingests raw CloudTrail logs (individual files, directories, or compressed `.json.gz` archives).
-2. Parses recorded API calls, request parameters, and referenced resource ARNs.
-3. Groups statements logically by AWS service.
-4. Generates standard JSON, Terraform (`--format=tf`), AWS CDK (`--format=cdk`), or other supported formats with zero wildcards where exact ARNs were recorded.
-
----
-
-## Files in this Directory
-
-* `cloudtrail_sample.json`: Realistic CloudTrail events containing S3, DynamoDB, KMS, and SQS calls with exact ARNs.
-* `run.sh`: Automated demo script running `iam-shrink ingest`.
+| File | Purpose |
+|---|---|
+| [`cloudtrail_sample.json`](cloudtrail_sample.json) | Sample CloudTrail event log containing recorded AWS S3 and DynamoDB calls. |
+| [`expected_policy.json`](expected_policy.json) | The exact IAM JSON policy synthesized from the CloudTrail log. |
+| [`expected_policy.tf`](expected_policy.tf) | Terraform HCL with parameterized ARNs synthesized from CloudTrail. |
+| [`run.sh`](run.sh) | Runnable shell script executing ingestion in both JSON and Terraform formats. |
 
 ---
 
-## Usage
+## Running the Example
 
-Run the sample script:
-
+Run the automated script:
 ```bash
-./run.sh
+./examples/02-cloudtrail-ingest/run.sh
 ```
 
-Or run directly from the command line:
+Or run manually:
 
 ```bash
-# Output JSON policy
-iam-shrink ingest cloudtrail_sample.json
+# Ingest single CloudTrail file
+iam-shrink ingest examples/02-cloudtrail-ingest/cloudtrail_sample.json
 
-# Output Terraform HCL
-iam-shrink ingest --format=tf cloudtrail_sample.json
+# Ingest and output Terraform HCL with strict ARNs
+iam-shrink ingest --format=tf --strict-arns examples/02-cloudtrail-ingest/cloudtrail_sample.json
 
-# Ingest an entire directory of CloudTrail archives (including .gz)
-iam-shrink ingest --format=tf /path/to/cloudtrail-bucket-dumps/
+# Ingest an entire directory of compressed CloudTrail logs
+iam-shrink ingest /var/log/cloudtrail/
 ```
+
+---
+
+## Pre-Committed Outputs
+
+* [expected_policy.json](expected_policy.json) — Synthesized AWS IAM JSON policy.
+* [expected_policy.tf](expected_policy.tf) — Synthesized Terraform `data "aws_iam_policy_document"` block.

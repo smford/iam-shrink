@@ -1,8 +1,18 @@
 # iam-shrink
 
-**Local-to-Least-Privilege AWS IAM Policy Generator**
+<p align="center">
+  <strong>Local-to-Least-Privilege AWS IAM Policy Generator</strong><br>
+  <em>Intercept AWS operations during local test suites, scripts, or deployment dry runs and automatically synthesize exact, least-privilege IAM policies.</em>
+</p>
 
-> Intercept AWS operations during local test suites, scripts, or deployment dry runs and automatically synthesize exact, least-privilege IAM policies.
+<p align="center">
+  <a href="https://github.com/smford/iam-shrink/actions/workflows/ci.yml"><img src="https://github.com/smford/iam-shrink/actions/workflows/ci.yml/badge.svg" alt="CI Status"></a>
+  <a href="https://goreportcard.com/report/github.com/smford/iam-shrink"><img src="https://goreportcard.com/badge/github.com/smford/iam-shrink" alt="Go Report Card"></a>
+  <a href="https://github.com/smford/iam-shrink/releases"><img src="https://img.shields.io/github/v/release/smford/iam-shrink?color=blue" alt="Latest Release"></a>
+  <a href="https://ghcr.io/smford/iam-shrink"><img src="https://img.shields.io/badge/docker-ghcr.io-blue?logo=docker" alt="Docker Image"></a>
+  <a href="https://github.com/smford/iam-shrink/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-green.svg" alt="License: MIT"></a>
+  <a href="https://smford.github.io/iam-shrink/"><img src="https://img.shields.io/badge/docs-GitHub%20Pages-informational" alt="Docs"></a>
+</p>
 
 ---
 
@@ -14,20 +24,40 @@ Because getting "Access Denied" errors slows down development, developers and te
 
 **`iam-shrink` solves this automatically.**
 
-It acts like a transparent observer. When you run your existing test suite (e.g. `go test`, `pytest`, `npm test`, or `terraform plan`), `iam-shrink` quietly watches every AWS call your code makes in real time. It then writes the **exact, minimal security policy** needed to run your application—formatted in **Terraform HCL**, **AWS CDK**, **CDKTF**, **Pulumi**, **CloudFormation**, **AWS Identity Center (SSO)**, **GCP IAM**, **Azure RBAC**, **Kubernetes RBAC**, or **JSON**.
+It acts like a transparent observer. When you run your existing test suite (e.g. `go test`, `pytest`, `npm test`, or `terraform plan`), `iam-shrink` quietly watches every AWS call your code makes in real time with **zero cloud credentials**. It then writes the **exact, minimal security policy** needed to run your application—formatted in **Terraform HCL**, **AWS CDK**, **CDKTF**, **Pulumi**, **CloudFormation**, **AWS Identity Center (SSO)**, **GCP IAM**, **Azure RBAC**, **Kubernetes RBAC**, or **JSON**.
 
 ---
 
-## The Core Problems iam-shrink Solves
+## How It Works: Zero-Credential Telemetry
 
-| The Problem | How iam-shrink Solves It |
-|---|---|
-| **1. The "Wildcard Trap"**<br>Developers grant `*` permissions because AWS has 14,000+ IAM actions and figuring out exact permissions takes hours of trial and error. | **Zero-effort capture**: Runs alongside your local tests with zero code changes, recording exact APIs called and emitting least-privilege policies in seconds. |
-| **2. The CloudTrail Delay**<br>Traditional policy generators require deploying code to an AWS account and waiting 15–30 minutes (or days) for CloudTrail logs to aggregate. | **Instant local interception**: Uses AWS Client-Side Monitoring (CSM) and local proxying on `127.0.0.1`. You get your policy the millisecond your test suite completes. |
-| **3. The "Production Breaking" Fear**<br>DevOps teams are terrified of shrinking permissions because removing permissions might break rare operations (e.g. month-end cron jobs, disaster recovery drills). | **Historical Blast Radius Scoring (`iam-shrink impact`)**: Cross-references proposed policies against 30/60/90 days of CloudTrail logs, scoring safety and pinpointing rare calls that would be severed. |
-| **4. Hard AWS Byte Limits**<br>AWS enforces strict quotas on policy sizes (max **2,048 bytes** for inline policies, **10,240 bytes** for managed policies). Complex apps breach these limits. | **Automatic Compression (`iam-shrink optimize`)**: Merges statements sharing resource targets and minifies JSON to compress byte size by up to 30–50%. |
-| **5. Multi-Cloud & Multi-IaC Tower of Babel**<br>Modern organizations use Terraform, CDK, AWS SSO, Google Cloud, Azure, and Kubernetes. Manually rewriting IAM across all these syntaxes is painful. | **One-click Multi-Format Export**: Generates native Terraform HCL, AWS CDK, Pulumi, CloudFormation, AWS SSO Permission Sets, GCP IAM Custom Roles, Azure RBAC, and K8s RBAC. |
-| **6. Stale Compliance & Audit Drift**<br>Auditing against CIS AWS Benchmark v3.0 and NIST SP 800-53 usually requires expensive external scanners and manual spreadsheets. | **Built-in Compliance & Live Sync (`iam-shrink report` & `update-rules`)**: Audits policies locally and automatically syncs updated benchmarks every week via GitHub Actions. |
+```mermaid
+flowchart LR
+    A["Your Test Suite<br/>(pytest, go test, npm test, terraform plan)"] -->|"AWS SDK Telemetry<br/>(CSM UDP 127.0.0.1)"| B["iam-shrink Engine"]
+    A -.->|"Optional HTTP/HTTPS<br/>Interception Proxy"| B
+    B --> C{"IAM Synthesis Engine"}
+    C --> D["Terraform HCL<br/>(with Strict ARNs)"]
+    C --> E["AWS CDK / Pulumi / CFN"]
+    C --> F["GCP IAM / Azure / K8s RBAC"]
+    C --> G["CIS & NIST Benchmark Audit"]
+```
+
+1. **Local Interception**: Prefix your test command with `iam-shrink run -- <cmd>`. `iam-shrink` starts a lightweight loopback UDP listener on `127.0.0.1` and passes `AWS_CSM_ENABLED=true` to the test process.
+2. **Standard AWS SDK Telemetry**: Every official AWS SDK (Go, Python/Boto3, Node.js `@aws-sdk`, Java, .NET) natively emits microsecond telemetry datagrams for every API call.
+3. **Instant Synthesis**: When the command finishes, `iam-shrink` correlates the calls, looks up IAM permissions in its embedded database, parameterizes ARNs, and generates clean infrastructure code.
+
+---
+
+## Why iam-shrink vs Alternatives?
+
+| Capability | `iam-shrink` | AWS IAM Access Analyzer | Policy Sentry | CloudTracker |
+|---|:---:|:---:|:---:|:---:|
+| **Feedback Loop** | **Instant (Local Test Run)** | Delayed (15-30m CloudTrail) | Manual list compile | Batch CloudTrail sync |
+| **AWS Credentials Required?** | **No (Zero-Cloud Loopback)** | Yes (Live AWS Account) | No | Yes (AWS Athena/S3) |
+| **In-Place Terraform Patching** | **Yes (`iam-shrink patch`)** | No | No | No |
+| **Multi-Cloud (GCP, Azure, K8s)** | **Yes (Native Translation)** | AWS Only | AWS Only | AWS Only |
+| **Operational Blast Radius** | **Yes (`iam-shrink impact`)** | Basic | No | Read-only diff |
+| **CI/CD Quality Gate & PR Diff** | **Yes (Action & CLI)** | External check | No | No |
+| **AWS Quota Compression** | **Yes (30-50% Byte Reduction)** | No | No | No |
 
 ---
 
@@ -59,217 +89,143 @@ go install github.com/smford/iam-shrink/cmd/iam-shrink@latest
 
 ---
 
-## Interactive Examples & Tutorials
+## Quickstart: Choose Your Stack
 
-Check out the runnable tutorials in the [`examples/`](examples/) directory to learn how to use `iam-shrink` in practice:
-
-| Tutorial | Description | Run Script |
-|---|---|---|
-| [**01. Local Test Suite Telemetry**](examples/01-local-test-runner/) | Run your test suite to capture IAM calls and synthesize JSON, Terraform, or CDK policies. | `./examples/01-local-test-runner/run.sh` |
-| [**02. CloudTrail Log Ingestion**](examples/02-cloudtrail-ingest/) | Synthesize least-privilege policies directly from historical `.json` or `.json.gz` logs. | `./examples/02-cloudtrail-ingest/run.sh` |
-| [**03. In-Place Terraform Patching**](examples/03-terraform-patching/) | Replace wildcard policies in `.tf` files in-place with automatic `.bak` backups. | `./examples/03-terraform-patching/run.sh` |
-| [**04. CI/CD Security Quality Gate**](examples/04-ci-cd-quality-gate/) | Block wildcard policies in pipelines, run security linters, and generate PR comments. | `./examples/04-ci-cd-quality-gate/run.sh` |
-| [**05. Verification & Blast Radius**](examples/05-policy-verification-and-blast-radius/) | Prove policy subset boundaries and assess operational risk against real traffic. | `./examples/05-policy-verification-and-blast-radius/run.sh` |
-
----
-
-## Complete Feature Guide & Problem Explanations
-
-Each feature in `iam-shrink` was built to solve a specific, real-world security or operational problem:
-
----
-
-### 1. Dual Interception Engine (CSM & MITM Proxy)
-
-* **The Problem:** AWS SDK calls transmit service names (like `S3`) and operation names (like `GetObject`), but standard telemetry often omits the exact target resource ARN (e.g. `arn:aws:s3:::my-production-bucket/keys/*`).
-* **How iam-shrink Solves It:**
-  1. **AWS CSM (Client-Side Monitoring):** A lightweight UDP daemon listening on `127.0.0.1` that standard AWS SDKs natively broadcast to when `AWS_CSM_ENABLED=true` is set.
-  2. **HTTP/HTTPS Interception Proxy (`--proxy`):** Spawns an ephemeral local CA proxy that inspects outgoing API request paths and parameters on-the-fly, extracting exact table names, bucket ARNs, and KMS key IDs.
+Run `iam-shrink` with your preferred programming language and testing framework:
 
 ```bash
-# Capture with exact runtime ARNs via proxy
+# Go (go test)
+iam-shrink run --format=tf --strict-arns --emit-vars -- go test ./...
+
+# Python (pytest + boto3)
+iam-shrink run --format=tf --strict-arns -- pytest tests/
+
+# Node.js / TypeScript (Jest / Vitest + @aws-sdk)
+iam-shrink run --format=cdk -- npm test
+
+# Terraform Dry-Run (Capture permissions needed for terraform plan)
+iam-shrink run --format=tf --strict-arns -- terraform plan
+
+# Multi-Cloud (Google Cloud Custom Role from Python tests)
+iam-shrink run --format=gcp -- pytest tests/
+
+# Docker (Zero-install wrapper for any repository)
+docker run --rm -v $(pwd):/workspace -w /workspace \
+  ghcr.io/smford/iam-shrink:latest run --format=tf -- pytest
+```
+
+---
+
+## Top 5 Real-World Recipes (Cookbook)
+
+### Recipe 1: Patch Insecure Terraform Files In-Place
+Automatically find and replace wildcard `data "aws_iam_policy_document"` blocks inside `.tf` files:
+```bash
+iam-shrink patch --file=infrastructure/iam.tf -- pytest tests/
+```
+*(Creates `iam.tf.bak` backup automatically before rewriting).*
+
+### Recipe 2: Block Insecure Wildcard Policies in CI/CD
+Fail pull requests that attempt to commit `*` actions or fail the CIS AWS Foundations Benchmark:
+```bash
+iam-shrink gate --fail-on-wildcard --standard=cis path/to/policy.json
+```
+
+### Recipe 3: Safely Prune 85%+ Unused Permissions from Legacy Roles
+Prune dead permissions from bloated roles while mathematically proving zero privilege expansion and confirming 100% operational safety:
+```bash
+# 1. Prune unused permissions
+iam-shrink prune-role --active-actions="s3:GetObject,dynamodb:PutItem" legacy_role.json --out=shrunk_role.json
+
+# 2. Formally prove subset equivalence
+iam-shrink verify legacy_role.json shrunk_role.json
+
+# 3. Simulate against 90 days of CloudTrail traffic
+iam-shrink impact /var/log/cloudtrail/ shrunk_role.json
+```
+
+### Recipe 4: Prevent AWS IAM Byte Limit Outages
+AWS enforces strict limits: **2,048 bytes** for inline policies and **10,240 bytes** for managed policies. Minify and merge shared resource statements:
+```bash
+iam-shrink optimize --check policy.json
+iam-shrink optimize --out=compressed_policy.json policy.json
+```
+
+### Recipe 5: Post Automated IAM Review Comments on Pull Requests
+Generate rich Markdown PR comments showing permissions added, removed, and compliance status:
+```bash
+iam-shrink pr-comment \
+  --existing=base_role.json \
+  --captured=new_policy.json \
+  --standard=cis
+```
+
+---
+
+## 7 Interactive Worked Examples & Tutorials
+
+Check out the runnable tutorials in the [`examples/`](examples/) directory. Every example includes an executable `run.sh` script and **pre-committed expected output files**:
+
+| Tutorial | Description | Primary Command | Pre-Committed Outputs |
+|---|---|---|:---:|
+| [**01. Local Test Suite Telemetry**](examples/01-local-test-runner/) | Intercept calls from Go, Python (`pytest`), and Node.js (`jest`) test suites with zero credentials. | `iam-shrink run` | [JSON](examples/01-local-test-runner/expected_policy.json), [Terraform](examples/01-local-test-runner/expected_policy.tf), [CDK](examples/01-local-test-runner/expected_policy.ts), [GCP](examples/01-local-test-runner/expected_policy_gcp.yaml) |
+| [**02. CloudTrail Log Ingestion**](examples/02-cloudtrail-ingest/) | Synthesize least-privilege policies directly from historical `.json` or `.json.gz` logs. | `iam-shrink ingest` | [JSON](examples/02-cloudtrail-ingest/expected_policy.json), [Terraform](examples/02-cloudtrail-ingest/expected_policy.tf) |
+| [**03. In-Place Terraform Patching**](examples/03-terraform-patching/) | Replace wildcard policies in `.tf` files in-place with automatic `.bak` backups. | `iam-shrink patch` | [Patched HCL](examples/03-terraform-patching/main.tf.patched) |
+| [**04. CI/CD Security Quality Gate**](examples/04-ci-cd-quality-gate/) | Block wildcard policies in pipelines, run security linters, and generate PR comments. | `iam-shrink gate`, `lint`, `pr-comment` | [Sample PR Comment](examples/04-ci-cd-quality-gate/expected_pr_comment.md) |
+| [**05. Verification & Blast Radius**](examples/05-policy-verification-and-blast-radius/) | Prove policy subset boundaries and assess operational risk against real traffic. | `iam-shrink verify`, `impact` | [Impact Report](examples/05-policy-verification-and-blast-radius/expected_impact_report.txt) |
+| [**06. Legacy IAM Role Pruning**](examples/06-legacy-role-pruning/) | Prune 85%+ unused actions safely with diff reports and AWS byte optimization. | `iam-shrink prune-role`, `diff` | [Pruned Role](examples/06-legacy-role-pruning/expected_pruned_role.json), [Diff Report](examples/06-legacy-role-pruning/expected_diff.txt) |
+| [**07. Kubernetes IRSA & Multi-Cloud**](examples/07-kubernetes-irsa-and-multi-cloud/) | Generate Kubernetes pod sidecar manifests and translate AWS operations to GCP and Azure. | `iam-shrink k8s`, `--format=gcp\|azure\|k8s-rbac\|vault` | [K8s Pod](examples/07-kubernetes-irsa-and-multi-cloud/expected_k8s_deployment.yaml), [GCP YAML](examples/07-kubernetes-irsa-and-multi-cloud/expected_gcp_role.yaml), [Azure JSON](examples/07-kubernetes-irsa-and-multi-cloud/expected_azure_role.json) |
+
+---
+
+## Complete Feature Guide
+
+### 1. Dual Interception Engine (CSM & MITM Proxy)
+* **AWS CSM (Client-Side Monitoring):** Lightweight UDP daemon on `127.0.0.1` that standard AWS SDKs natively broadcast to when `AWS_CSM_ENABLED=true` is set.
+* **HTTP/HTTPS Interception Proxy (`--proxy`):** Ephemeral local CA proxy that inspects outgoing API request paths and parameters on-the-fly, extracting exact table names, bucket ARNs, and KMS key IDs.
+```bash
 iam-shrink run --proxy --format=tf -- go test ./...
 ```
 
----
-
-### 2. AWS Identity Center (AWS SSO) Permission Sets (`--format=sso`)
-
-* **The Problem:** Modern multi-account AWS Organizations do not assign raw IAM roles directly to humans. They use **AWS Identity Center Permission Sets**, which have specific Terraform syntax (`aws_ssoadmin_permission_set`, `aws_ssoadmin_permission_set_inline_policy`, session durations).
-* **How iam-shrink Solves It:** `--format=sso` synthesizes turnkey Terraform HCL for Identity Center with custom session durations (e.g. `PT4H`).
-
-```bash
-iam-shrink run --format=sso --session-duration="PT4H" -- pytest tests/
-```
-
----
+### 2. Multi-Cloud IAM & RBAC Translation
+Translates captured AWS actions directly into equivalent permissions for other clouds:
+* **GCP Custom Roles (`--format=gcp`):** e.g., `s3:GetObject` $\rightarrow$ `storage.objects.get`.
+* **Azure RBAC (`--format=azure`):** e.g., `s3:GetObject` $\rightarrow$ `Microsoft.Storage/storageAccounts/blobServices/containers/blobs/read`.
+* **Kubernetes RBAC (`--format=k8s-rbac`):** Maps to `ClusterRole` verbs and apiGroups.
+* **HashiCorp Vault (`--format=vault`):** Outputs Vault AWS Secret Engine dynamic role commands.
 
 ### 3. Historical Blast Radius & Operational Risk Scoring (`iam-shrink impact`)
-
-* **The Problem:** When replacing a wide policy with a shrunk policy, nobody knows if an un-tested, infrequent operation (like a monthly backup or quarterly disaster recovery drill) will be blocked and cause an outage.
-* **How iam-shrink Solves It:** `iam-shrink impact` reads historical CloudTrail logs, compares every single recorded event against the proposed shrunk policy, calculates an **Operational Safety Score**, and warns you of any rare calls that would be severed.
-
+Cross-references proposed policies against 30/60/90 days of CloudTrail logs, scoring safety and pinpointing rare calls that would be severed:
 ```bash
-# Analyze impact against historical CloudTrail logs
 iam-shrink impact /var/log/cloudtrail/ proposed_shrunk_policy.json
-
-# Fail CI if safety score is below 99% or if any call is severed
-iam-shrink impact --min-score=99.0 --fail-on-severed /path/to/logs/ policy.json
 ```
 
----
-
 ### 4. Trace-to-Code Policy Annotator (`--annotate`)
-
-* **The Problem:** When a security auditor reviews a generated IAM policy, they demand to know: *"Why does this service need `dynamodb:DeleteItem`? Which file and function called it?"*
-* **How iam-shrink Solves It:** Passing `--annotate` injects code provenance and access-level comments directly above each statement in Terraform and JSON.
-
+Injects code provenance and access-level comments directly above each statement in Terraform and JSON:
 ```bash
 iam-shrink run --annotate --format=tf -- go test ./...
 ```
-*Generated output:*
-```hcl
-statement {
-  sid    = "DynamoDBWrite"
-  effect = "Allow"
-  actions = [
-    # observed runtime SDK call for dynamodb:PutItem (AccessLevel: Write)
-    "dynamodb:PutItem",
-  ]
-  resources = ["arn:aws:dynamodb:us-east-1:123456789012:table/Orders"]
-}
-```
-
----
 
 ### 5. Formal Subset & Equivalence Verification (`iam-shrink verify`)
-
-* **The Problem:** When rewriting or pruning a policy, it is easy to accidentally introduce "shadow expansions" (e.g. adding a wildcard that unknowingly grants dangerous unintended permissions).
-* **How iam-shrink Solves It:** `iam-shrink verify` mathematically evaluates whether the shrunk policy is a strict subset of the base policy. If any ungranted permissions or wildcard escalations exist, it fails with exit code `1` and highlights the exact discrepancy.
-
+Mathematically evaluates whether the shrunk policy is a strict subset of the base policy, failing if any ungranted permissions or wildcard escalations exist:
 ```bash
 iam-shrink verify production_base.json shrunk_policy.json
 ```
 
----
-
 ### 6. Policy Size Compression & Quota Optimization (`iam-shrink optimize`)
-
-* **The Problem:** AWS enforces hard limits: **2,048 bytes** for inline policies and **10,240 bytes** for managed policies. Large microservices frequently exceed this limit.
-* **How iam-shrink Solves It:** `iam-shrink optimize` groups statements with identical resources, strips redundant prefixes, minifies JSON, and audits byte count against AWS limits.
-
+AWS limits inline policies to 2,048 bytes and managed policies to 10,240 bytes. `iam-shrink optimize` groups statements and minifies JSON:
 ```bash
-# Audit policy size against inline and managed quotas
 iam-shrink optimize --check policy.json
-
-# Minify and save
-iam-shrink optimize --out=compressed_policy.json policy.json
 ```
 
----
-
-### 7. Multi-Cloud IAM & RBAC Translation (`--format=gcp|azure|k8s-rbac|vault`)
-
-* **The Problem:** Multi-cloud teams build applications spanning AWS, GCP, Azure, and Kubernetes. Translating an AWS permission model to GCP Custom Roles or Azure RBAC requires deep specialized expertise across all cloud providers.
-* **How iam-shrink Solves It:** `iam-shrink` translates captured AWS actions directly into equivalent permissions for other clouds:
-  - **GCP Custom Roles (`--format=gcp`):** e.g., `s3:GetObject` $\rightarrow$ `storage.objects.get`.
-  - **Azure RBAC (`--format=azure`):** e.g., `s3:GetObject` $\rightarrow$ `Microsoft.Storage/storageAccounts/blobServices/containers/blobs/read`.
-  - **Kubernetes RBAC (`--format=k8s-rbac`):** Maps to `ClusterRole` verbs and apiGroups.
-  - **HashiCorp Vault (`--format=vault`):** Outputs Vault AWS Secret Engine dynamic role commands.
-
-```bash
-iam-shrink run --format=gcp -- pytest tests/
-iam-shrink run --format=azure -- npm test
-iam-shrink run --format=k8s-rbac -- go test ./...
-```
-
----
-
-### 8. CIS AWS Foundations & NIST SP 800-53 Compliance Reporting
-
-* **The Problem:** Compliance standards (CIS Benchmark v3.0, NIST SP 800-53 Rev 5) are huge documents. Auditing policies against them is usually done retroactively after security failures.
-* **How iam-shrink Solves It:**
-  - `iam-shrink report`: Audits policies in the terminal or generates markdown tables with pass/fail badges.
-  - `iam-shrink update-rules`: Fetches updated benchmark schemas.
-  - An automated GitHub Action (`compliance-sync.yml`) runs weekly, parsing upstream catalogs and keeping the repository's embedded rules fresh.
-
-```bash
-# Audit policy against CIS AWS Foundations Benchmark
-iam-shrink report --standard=cis policy.json
-
-# Audit policy against NIST SP 800-53 Rev 5 in Markdown format
-iam-shrink report --standard=nist --format=markdown policy.json
-```
-
----
-
-### 9. CI/CD Quality Gate & Automated PR Commenter
-
-* **The Problem:** Security teams cannot manually review every pull request that modifies IAM permissions.
-* **How iam-shrink Solves It:**
-  - `iam-shrink gate`: Blocks CI builds if wildcards (`*`) or high-severity compliance violations are introduced.
-  - `iam-shrink pr-comment`: Automatically posts a formatted Markdown review comment to GitHub PRs showing permissions added/removed and compliance scores.
-
-```bash
-# Enforce CI Quality Gate (fail on wildcards or <90% compliance)
-iam-shrink gate --fail-on-wildcard --min-compliance=90.0 policy.json
-
-# Generate PR comment
-iam-shrink pr-comment --existing=base_role.json --captured=new_policy.json --standard=cis
-```
-
----
-
-### 10. In-Place Terraform Patching (`iam-shrink patch`)
-
-* **The Problem:** Copying and pasting generated policies from terminal output into Terraform files is tedious and error-prone.
-* **How iam-shrink Solves It:** `iam-shrink patch` executes your test suite and automatically locates and replaces the `data "aws_iam_policy_document"` block in your `.tf` file in-place, creating an automatic backup (`.tf.bak`).
-
-```bash
-iam-shrink patch --file=infrastructure/iam.tf -- go test ./...
-```
-
----
-
-### 11. OpenTofu & Terraform State Resolution (`iam-shrink state`)
-
-* **The Problem:** Static code generates parameterized placeholders (`arn:aws:s3:::${var.bucket_name}`), but deployed policies need exact resource ARNs.
-* **How iam-shrink Solves It:** `iam-shrink state` parses `terraform.tfstate`, matches variable placeholders against real deployed cloud resources, and substitutes concrete ARNs.
-
-```bash
-iam-shrink state terraform.tfstate policy.json
-```
-
----
-
-### 12. Interactive Single-Page Web UI (`iam-shrink ui`)
-
-* **The Problem:** Visualizing complex IAM policies in raw JSON or HCL is difficult for non-security specialists.
-* **How iam-shrink Solves It:** Spawns a zero-dependency, local web application on `127.0.0.1:8080`. Offers live permission toggles, access-level filtering, and real-time code preview tabs across Terraform, CDK, GCP, Azure, K8s, and Vault.
-
+### 7. Interactive Single-Page Web UI (`iam-shrink ui`)
+Spawns a zero-dependency, local web application on `127.0.0.1:8080` with live permission toggles, access-level filtering, and multi-format preview tabs:
 ```bash
 iam-shrink ui --port=8080 policy.json
 ```
 
----
-
-### 13. Zero-Install Official Container Image
-
-* **The Problem:** Installing Go or compiling binaries inside diverse CI/CD environments (Node.js, Python, Java) adds build friction.
-* **How iam-shrink Solves It:** The multi-arch Docker image (`ghcr.io/smford/iam-shrink:latest`) packages `iam-shrink` with pre-configured CSM telemetry listeners.
-
-```bash
-docker run --rm -v $(pwd):/workspace -w /workspace \
-  ghcr.io/smford/iam-shrink:latest run --format=tf -- npm test
-```
-
----
-
-### 14. Turnkey Composite GitHub Action (`action.yml`)
-
-* **The Problem:** Configuring GitHub Actions workflows with manual binary downloads and UDP networking is complex.
-* **How iam-shrink Solves It:** A single composite step in your GitHub Actions workflow:
-
+### 8. Turnkey Composite GitHub Action (`action.yml`)
+Include a single composite step in your GitHub Actions workflow:
 ```yaml
 name: IAM Least Privilege Check
 on: [pull_request]
@@ -286,22 +242,6 @@ jobs:
           out: 'policy.tf'
           strict-arns: 'true'
           compliance: 'cis'
-```
-
----
-
-### 15. Daemon / Background Session Mode (`iam-shrink session`)
-
-* **The Problem:** Test suites split across multiple commands, Docker Compose containers, or background dev servers cannot use a single `iam-shrink run -- <cmd>` invocation.
-* **How iam-shrink Solves It:** `iam-shrink session start` launches a background collector daemon. Multiple containers or test scripts broadcast to it, and `iam-shrink session dump` aggregates all calls into one unified policy.
-
-```bash
-iam-shrink session start
-# export AWS_CSM_ENABLED=true ...
-pytest tests/
-npm run test:integration
-iam-shrink session dump --format=tf
-iam-shrink session stop
 ```
 
 ---
@@ -336,18 +276,11 @@ Usage:
 
 ---
 
-## Development & Testing
+## Contributing & Security
 
-```bash
-# Run all unit and integration tests (zero-CGO)
-make test
-
-# Run Go static analysis
-make vet
-
-# Build binary locally
-make build
-```
+Contributions are warmly welcomed! Please see our:
+* [Contributing Guide](CONTRIBUTING.md) for architecture details, running tests, and adding AWS SDK action mappings.
+* [Security Policy](SECURITY.md) for responsible disclosure.
 
 ---
 

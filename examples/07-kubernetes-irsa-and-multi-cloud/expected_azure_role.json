@@ -1,0 +1,14 @@
+{
+  "Name": "iam-shrink-least-privilege",
+  "IsCustom": true,
+  "Description": "Least-privilege role synthesized by iam-shrink",
+  "Actions": [
+    "Microsoft.DocumentDB/databaseAccounts/read",
+    "Microsoft.KeyVault/vaults/keys/decrypt/action",
+    "Microsoft.Storage/storageAccounts/blobServices/containers/blobs/read"
+  ],
+  "NotActions": [],
+  "AssignableScopes": [
+    "/subscriptions/${var.subscription_id}"
+  ]
+}

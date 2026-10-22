@@ -1,0 +1,35 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: order-service
+  namespace: production
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: order-service
+  template:
+    metadata:
+      labels:
+        app: order-service
+    spec:
+      containers:
+        # Main Application Container
+        - name: order-service
+          image: your-app-image:latest
+          env:
+            - name: AWS_CSM_ENABLED
+              value: "true"
+            - name: AWS_CSM_PORT
+              value: "31000"
+            - name: AWS_CSM_HOST
+              value: "127.0.0.1"
+        # iam-shrink CSM Telemetry Collector Sidecar
+        - name: iam-shrink-collector
+          image: ghcr.io/smford/iam-shrink:latest
+          args:
+            - "session"
+            - "start"
+          ports:
+            - containerPort: 31000
+              protocol: UDP

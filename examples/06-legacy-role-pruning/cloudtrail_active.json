@@ -1,0 +1,29 @@
+{
+  "Records": [
+    {
+      "eventVersion": "1.08",
+      "eventTime": "2026-10-20T10:00:00Z",
+      "eventSource": "s3.amazonaws.com",
+      "eventName": "GetObject",
+      "awsRegion": "us-east-1",
+      "sourceIPAddress": "192.0.2.1",
+      "userAgent": "aws-sdk-go-v2",
+      "requestParameters": {
+        "bucketName": "production-data-lake",
+        "key": "reports/quarterly.csv"
+      }
+    },
+    {
+      "eventVersion": "1.08",
+      "eventTime": "2026-10-20T10:05:00Z",
+      "eventSource": "dynamodb.amazonaws.com",
+      "eventName": "PutItem",
+      "awsRegion": "us-east-1",
+      "sourceIPAddress": "192.0.2.1",
+      "userAgent": "aws-sdk-go-v2",
+      "requestParameters": {
+        "tableName": "OrderAuditLog"
+      }
+    }
+  ]
+}

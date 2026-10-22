@@ -1,53 +1,66 @@
-# Example 05: Mathematical Subset Verification & Blast Radius Risk Analysis
+# Example 05: Mathematical Verification & Operational Blast Radius
 
-This example demonstrates how to safely apply tightened IAM policies to production workloads without risking accidental privilege expansions or breaking live traffic.
-
----
-
-## The Problems
-
-1. **Unintended Privilege Expansion**: When refactoring or tightening a policy, it is dangerously easy to inadvertently grant permissions or resource scopes that the original policy never permitted (e.g. converting `s3:*` on bucket `A` to `*` on bucket `B`, or adding an unrelated service like SQS).
-2. **Production Outages from Severed Calls**: Developers fear deploying shrunk policies because background cron jobs, disaster recovery drills, or infrequently used API calls might get severed, causing downtime.
+This worked example demonstrates how to solve the two biggest fears when locking down IAM:
+1. **Accidental Privilege Expansion:** Did our refactored policy accidentally grant permissions not in the base policy? (`iam-shrink verify`)
+2. **Production Outages:** Will removing permissions break infrequent tasks (like monthly reports or disaster recovery)? (`iam-shrink impact`)
 
 ---
 
-## How iam-shrink Solves It
+## What This Example Contains
 
-1. **`iam-shrink verify <base-policy> <shrunk-policy>`**:
-   Uses formal mathematical subset analysis to prove that the shrunk policy grants strictly less than or equal to the permissions in the base policy. If any action or resource scope expands outside the base policy, verification immediately fails.
-
-2. **`iam-shrink impact <cloudtrail-history> <candidate-policy>`**:
-   Replays historical production CloudTrail logs against the proposed policy. It calculates an **Operational Safety Score** and itemizes any API calls that would be severed before the policy is applied.
-
----
-
-## Files in this Directory
-
-* `base_policy.json`: Broad existing IAM role policy (`s3:*`, `dynamodb:*`, `kms:*`).
-* `candidate_policy.json`: Valid shrunk least-privilege policy.
-* `violating_policy.json`: Flawed candidate policy containing an illegal expansion (`sqs:SendMessage`).
-* `historical_cloudtrail.json`: Recorded production log entries.
-* `run.sh`: Automated demo script demonstrating subset verification and blast radius scoring.
+| File | Purpose |
+|---|---|
+| [`base_policy.json`](base_policy.json) | The approved production base policy currently deployed in AWS. |
+| [`candidate_policy.json`](candidate_policy.json) | A proposed shrunk policy that is a clean subset of `base_policy.json`. |
+| [`violating_policy.json`](violating_policy.json) | A flawed policy that adds an unauthorized action (`dynamodb:DeleteItem`). |
+| [`historical_cloudtrail.json`](historical_cloudtrail.json) | Historical CloudTrail audit log covering 90 days of operational calls. |
+| [`expected_impact_report.txt`](expected_impact_report.txt) | Terminal output showing the Operational Safety Score and severed call detection. |
+| [`run.sh`](run.sh) | Runnable shell script executing verification and blast radius scoring. |
 
 ---
 
-## Usage
+## 1. Mathematical Subset Verification (`iam-shrink verify`)
 
-Run the sample script:
+`iam-shrink verify` mathematically evaluates whether policy $B \subseteq A$. If policy $B$ expands any action or wildcard, it fails with exit code `1`:
 
 ```bash
-./run.sh
-```
-
-Or run individual commands:
-
-```bash
-# Verify candidate policy is a strict subset of base
+# Valid candidate policy (Succeeds - clean subset)
 iam-shrink verify base_policy.json candidate_policy.json
 
-# Detect illegal expansion
+# Flawed candidate policy (Fails - detects unauthorized dynamodb:DeleteItem)
 iam-shrink verify base_policy.json violating_policy.json
+```
 
-# Assess blast radius against historical CloudTrail logs
+---
+
+## 2. Historical Blast Radius Analysis (`iam-shrink impact`)
+
+`iam-shrink impact` scans real historical CloudTrail logs and flags every operation that the proposed policy would block:
+
+```bash
 iam-shrink impact historical_cloudtrail.json candidate_policy.json
+```
+
+View the generated report in [expected_impact_report.txt](expected_impact_report.txt):
+```text
+=== Operational Blast Radius & Impact Analysis ===
+
+  Historical Events Analyzed: 5
+  Permitted by Shrunk Policy: 4 (80.00%)
+  Potentially Severed Calls:  1
+  Operational Safety Score:   80.0% [HIGH RISK]
+
+⚠️  The following historical calls would be SEVERED if this policy is applied:
+    SERVICE / API        IAM ACTION                     OCCURRENCES
+    --------------------------------------------------------------------
+    s3:DeleteBucket      s3:DeleteBucket                1
+```
+
+---
+
+## Running the Example
+
+Run the automated script:
+```bash
+./examples/05-policy-verification-and-blast-radius/run.sh
 ```

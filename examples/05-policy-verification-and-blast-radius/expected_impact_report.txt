@@ -1,0 +1,14 @@
+
+=== Operational Blast Radius & Impact Analysis ===
+
+  Historical Events Analyzed: 5
+  Permitted by Shrunk Policy: 4 (80.00%)
+  Potentially Severed Calls:  1
+  Operational Safety Score:   80.0% [HIGH RISK]
+
+⚠️  The following historical calls would be SEVERED if this policy is applied:
+    SERVICE / API        IAM ACTION                     OCCURRENCES
+    --------------------------------------------------------------------
+    s3:DeleteBucket      s3:DeleteBucket                1
+
+Recommendation: Verify if severed operations represent periodic background jobs, DR drills, or legitimate application workflows before deploying.

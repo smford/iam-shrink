@@ -11,18 +11,24 @@ if [ ! -f "$BIN" ]; then
 fi
 
 echo "================================================================="
-echo "Example 1: Generating JSON IAM Policy from Test Suite"
+echo "1. Go Test Suite -> JSON Policy"
 echo "================================================================="
 "$BIN" run -- go test -v "$DIR/..."
 
 echo ""
 echo "================================================================="
-echo "Example 2: Generating Terraform Policy with Strict ARNs & Variables"
+echo "2. Python Test Suite (pytest/python3) -> Terraform HCL + Variables"
 echo "================================================================="
-"$BIN" run --format=tf --strict-arns --emit-vars -- go test -v "$DIR/..."
+"$BIN" run --format=tf --strict-arns --emit-vars -- python3 "$DIR/test_app.py"
 
 echo ""
 echo "================================================================="
-echo "Example 3: Generating AWS CDK (TypeScript) Construct"
+echo "3. Node.js Test Suite -> AWS CDK (TypeScript)"
 echo "================================================================="
-"$BIN" run --format=cdk -- go test -v "$DIR/..."
+"$BIN" run --format=cdk -- node "$DIR/app.test.js"
+
+echo ""
+echo "================================================================="
+echo "4. Multi-Cloud Translation -> GCP IAM Custom Role YAML"
+echo "================================================================="
+"$BIN" run --format=gcp -- go test "$DIR/..."

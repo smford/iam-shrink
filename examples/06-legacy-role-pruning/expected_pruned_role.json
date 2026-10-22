@@ -1,0 +1,14 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "LegacyAppFullPermissions",
+      "Effect": "Allow",
+      "Action": [
+        "dynamodb:PutItem",
+        "s3:GetObject"
+      ],
+      "Resource": "*"
+    }
+  ]
+}

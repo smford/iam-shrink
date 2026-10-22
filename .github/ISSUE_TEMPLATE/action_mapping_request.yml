@@ -1,0 +1,48 @@
+name: AWS SDK Action Mapping Request
+description: Request support or ARN definitions for an unmapped AWS SDK API call
+title: "[Mapping]: "
+labels: ["mapping", "enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        AWS periodically releases new services and APIs. If `iam-shrink explain <service>:<api>` does not recognize a call or returns a default fallback, submit the details here so we can update `internal/mappings/`.
+  - type: input
+    id: service
+    attributes:
+      label: AWS Service Name
+      description: The service prefix as reported by CSM or the AWS SDK (e.g. `Bedrock`, `DynamoDB`, `S3`, `CognitoIdentityProvider`).
+      placeholder: "Bedrock"
+    validations:
+      required: true
+  - type: input
+    id: api
+    attributes:
+      label: AWS API Operation Name
+      description: The SDK method or API operation (e.g. `InvokeModel`, `ListTables`).
+      placeholder: "InvokeModel"
+    validations:
+      required: true
+  - type: input
+    id: expected_iam_action
+    attributes:
+      label: Required IAM Action(s)
+      description: The exact IAM action required (e.g. `bedrock:InvokeModel`).
+      placeholder: "bedrock:InvokeModel"
+    validations:
+      required: true
+  - type: textarea
+    id: required_arns
+    attributes:
+      label: Target Resource ARN Pattern(s)
+      description: Parameterized ARN templates required by this IAM action (e.g. `arn:aws:bedrock:${var.region}::foundation-model/${var.model_id}`).
+    validations:
+      required: false
+  - type: textarea
+    id: aws_documentation
+    attributes:
+      label: Link to AWS IAM Authorization Reference
+      description: URL to official AWS documentation for this action.
+      placeholder: "https://docs.aws.amazon.com/service-authorization/latest/reference/list_amazonbedrock.html"
+    validations:
+      required: false

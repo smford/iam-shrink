@@ -1,65 +1,71 @@
-# Example 01: Local Test Suite Telemetry & Policy Generation
+# Example 01: Local Test Suite Telemetry (Go, Python, Node.js)
 
-This example demonstrates how `iam-shrink` observes your existing local test suite and synthesizes exact, minimal AWS IAM policies without requiring production cloud permissions or complicated mock setups.
-
----
-
-## The Problem
-
-When developers write microservices that interact with AWS (e.g. S3, DynamoDB, KMS, SQS), writing IAM policies manually usually leads to two outcomes:
-1. **Over-permissive wildcards (`*`)**: Security risks, compliance violations, and excessive privileges.
-2. **Slow, manual trial-and-error**: Guessing API names, missing secondary permissions (e.g. `s3:ListBucket` needed alongside `s3:GetObject`, or `kms:Decrypt` needed for encrypted tables).
+This worked example demonstrates how `iam-shrink` captures AWS operations in real time from your local test suite—with **zero cloud credentials**, **zero mocks configuration**, and **zero code changes**—and synthesizes production-grade security policies in seconds.
 
 ---
 
-## How iam-shrink Solves It
+## What This Example Contains
 
-`iam-shrink` uses the AWS SDK's native **Client-Side Monitoring (CSM)** feature.
-- When you execute `iam-shrink run -- <your-test-command>`, `iam-shrink` automatically binds an ephemeral UDP socket on `127.0.0.1` and injects `AWS_CSM_PORT=...` and `AWS_CSM_ENABLED=true` into the child process.
-- All official AWS SDKs (Go, Python/Boto3, Node.js, Java, Rust) automatically stream lightweight UDP telemetry datagrams for every outbound API call.
-- `iam-shrink` intercepts these calls, translates SDK calls to IAM actions, resolves resource requirements, and outputs a clean, synthesized policy.
+| File | Purpose |
+|---|---|
+| [`app.go`](app.go) & [`app_test.go`](app_test.go) | Standard Go application test suite calling DynamoDB, KMS, and S3. |
+| [`test_app.py`](test_app.py) | Python test suite (`pytest` / `unittest`) calling the same AWS services. |
+| [`app.test.js`](app.test.js) | Node.js integration test (`node` / `jest`) demonstrating JavaScript SDK telemetry. |
+| [`expected_policy.json`](expected_policy.json) | The exact IAM JSON policy synthesized by `iam-shrink run`. |
+| [`expected_policy.tf`](expected_policy.tf) | Terraform HCL with strict ARNs and variable definitions. |
+| [`expected_policy.ts`](expected_policy.ts) | AWS CDK TypeScript construct synthesized from the same run. |
+| [`expected_policy_gcp.yaml`](expected_policy_gcp.yaml) | Equivalent Google Cloud IAM Custom Role mapping. |
+| [`run.sh`](run.sh) | Runnable shell script executing Go, Python, and Node.js examples. |
 
 ---
 
-## Project Structure
+## How It Works
 
-* `app.go`: Sample application logic reading S3, querying DynamoDB, and decrypting KMS.
-* `app_test.go`: Unit test exercising application pathways.
-* `run.sh`: Automated script executing `iam-shrink` across multiple output formats.
+1. When you prefix any test command with `iam-shrink run -- <cmd>`, `iam-shrink` spawns a high-speed loopback UDP daemon on `127.0.0.1`.
+2. It injects environment variables (`AWS_CSM_ENABLED=true`, `AWS_CSM_PORT=<ephemeral_port>`) into the test runner's environment.
+3. Every official AWS SDK (Go, Python/Boto3, Node.js `@aws-sdk`, Java, .NET) natively emits microsecond telemetry datagrams for every API call made.
+4. When your test finishes, `iam-shrink` correlates the calls, looks up IAM permissions in its embedded database, and generates exact policies.
 
 ---
 
 ## Running the Example
 
-Run the helper script:
-
+Run all languages with the automated script:
 ```bash
-./run.sh
+./examples/01-local-test-runner/run.sh
 ```
 
-Or run any of the individual commands below:
+Or run any language directly:
 
-### 1. Synthesize Standard JSON IAM Policy
+### Go (`go test`)
 ```bash
+# Generate AWS JSON Policy
 iam-shrink run -- go test -v ./...
-```
 
-### 2. Synthesize Terraform HCL with Parameterized ARNs and Variables
-```bash
+# Generate Terraform HCL with strict ARNs and companion variable definitions
 iam-shrink run --format=tf --strict-arns --emit-vars -- go test -v ./...
 ```
 
-### 3. Synthesize AWS CDK (TypeScript) Construct
+### Python (`pytest` or `python3`)
 ```bash
-iam-shrink run --format=cdk -- go test -v ./...
+iam-shrink run --format=tf --strict-arns -- pytest test_app.py
 ```
 
-### 4. Synthesize CloudFormation (JSON / YAML)
+### Node.js (`jest` or `node`)
 ```bash
-iam-shrink run --format=cfn -- go test -v ./...
+iam-shrink run --format=cdk -- node app.test.js
 ```
 
-### 5. Multi-Cloud / Cross-Platform Target (e.g. GCP Custom Role)
+### Cross-Cloud (GCP IAM Custom Role)
 ```bash
-iam-shrink run --format=gcp -- go test -v ./...
+iam-shrink run --format=gcp -- pytest test_app.py
 ```
+
+---
+
+## Pre-Committed Output Samples
+
+* View [expected_policy.tf](expected_policy.tf) to inspect the synthesized Terraform HCL.
+* View [expected_policy.json](expected_policy.json) to inspect the standard AWS JSON policy.
+* View [expected_policy.ts](expected_policy.ts) to inspect the AWS CDK TypeScript statements.
+* View [expected_policy_gcp.yaml](expected_policy_gcp.yaml) to inspect the GCP custom role translation.

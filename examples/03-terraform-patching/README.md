@@ -1,50 +1,72 @@
-# Example 03: In-Place Terraform Policy Patching
+# Example 03: In-Place Terraform Patching (`iam-shrink patch`)
 
-This example demonstrates how `iam-shrink patch` directly updates existing Terraform `.tf` files in-place with synthesized least-privilege IAM policies, while automatically creating a `.bak` backup file for rollback safety.
-
----
-
-## The Problem
-
-When developers need to tighten IAM policies in infrastructure-as-code repositories:
-1. They have to capture runtime calls.
-2. Convert them into Terraform `aws_iam_policy_document` syntax.
-3. Locate the corresponding `.tf` file and manually copy-paste statements into blocks, risking syntax errors or broken resource references.
+This worked example demonstrates how `iam-shrink` can automatically locate and update an insecure `data "aws_iam_policy_document"` block directly inside a Terraform `.tf` file in-place, while automatically creating a safe `.bak` backup.
 
 ---
 
-## How iam-shrink Solves It
+## What This Example Contains
 
-The `iam-shrink patch` command:
-1. Runs your command or test suite under CSM telemetry.
-2. Locates the targeted `data "aws_iam_policy_document"` block in your specified `.tf` file.
-3. Automatically creates a backup (`<file>.tf.bak`).
-4. Replaces the wildcard policy with the synthesized least-privilege statements while preserving the rest of your Terraform definitions.
-
----
-
-## Files in this Directory
-
-* `main.tf`: Initial Terraform file containing an over-permissive wildcard IAM policy.
-* `mock_service.go`: Microservice simulating S3 and DynamoDB API calls.
-* `run.sh`: Automated demo script executing `iam-shrink patch` and displaying the diff.
+| File | Purpose |
+|---|---|
+| [`main.tf`](main.tf) | Original Terraform file containing an insecure `*` wildcard policy. |
+| [`mock_service.go`](mock_service.go) | Standalone application simulating runtime AWS S3 and DynamoDB operations. |
+| [`main.tf.patched`](main.tf.patched) | The resulting Terraform file after in-place replacement by `iam-shrink patch`. |
+| [`run.sh`](run.sh) | Runnable shell script executing the patch and displaying the diff. |
 
 ---
 
-## Usage
+## Before and After Comparison
 
-Run the sample script:
-
-```bash
-./run.sh
+### Before (`main.tf` - Overprivileged Wildcard):
+```hcl
+data "aws_iam_policy_document" "app_policy" {
+  statement {
+    sid       = "WildcardAdminAccess"
+    effect    = "Allow"
+    actions   = ["*"]
+    resources = ["*"]
+  }
+}
 ```
 
-Or run directly from the command line:
+### After (`main.tf.patched` - Automatically Patched):
+```hcl
+data "aws_iam_policy_document" "generated" {
+  statement {
+    sid    = "Dynamodb"
+    effect = "Allow"
+    actions = [
+      "dynamodb:PutItem",
+    ]
+    resources = [
+      "arn:aws:dynamodb:${var.region}:${var.account_id}:table/${var.table_name}",
+    ]
+  }
 
+  statement {
+    sid    = "S3"
+    effect = "Allow"
+    actions = [
+      "s3:GetObject",
+      "s3:PutObject",
+    ]
+    resources = [
+      "arn:aws:s3:::${var.bucket_name}/*",
+    ]
+  }
+}
+```
+
+---
+
+## Running the Example
+
+Run the automated script:
 ```bash
-# Patch main.tf in-place using a test command
-iam-shrink patch --file=main.tf -- go test -v ./...
+./examples/03-terraform-patching/run.sh
+```
 
-# Target a specific policy document block if multiple exist in the file:
-iam-shrink patch --file=main.tf --target=app_policy -- go run mock_service.go
+Or run manually:
+```bash
+iam-shrink patch --file=examples/03-terraform-patching/main.tf -- go run examples/03-terraform-patching/mock_service.go
 ```
